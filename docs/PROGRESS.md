@@ -698,3 +698,34 @@ npm run lint -- packages/server/src/server/daemon-config-store.test.ts \
 边界：未把 `expectedRevision` 改为 required。未改 Codex required / 审批 / API key 语义。未开 relay。K2 Maestro 真机、K3 Desktop reconnect、K4 rewind E2E 未做。
 
 下一步：用户在手机上点允许 driver 安装后跑 K2；然后 K3。
+
+## 2026-08-29 — NEXT_GOALS_R4 K2 Android Maestro 真机待验
+
+完成（安装与 harness，非表单断言）：
+
+- 从 `~/.maestro/lib/maestro-client.jar` 抽出 `maestro-app.apk` / `maestro-server.apk`，`adb install -r`（无 `-t`）。设备 `10AE6J03LC001JL` 上 `dev.mobile.maestro` 与 `dev.mobile.maestro.test` 已装上。
+- 选择 **(c) Metro**：`sh.paseo.debug` 是 Expo DevLauncher，`launchApp` 在 Metro 不可达时卡在 `DevLauncherActivity`。未做 release APK（a），也未把 flow 步骤挪到 `launchApp` 之前（b）。
+- harness 增加 Metro `8081` 的 `adb reverse`、`--no-reinstall-driver`；flow 使用 `clearState: false`、`stopApp: false`；`android-dev-client.yaml` 打开 `exp+voice-mobile://expo-development-client/?url=http://127.0.0.1:8081`，BACK 关掉 Expo tools overlay。
+- 会话结束后 `pm list packages` 仍有两个 Maestro 包，未再弹 Vivo 安装框。
+
+待验：
+
+- 已跑 shipped `test-provider-forms-android.sh`（隔离 `PASEO_HOME`、随机端口、`--no-relay`）。无 `provider-after.json`，取消后仅 `codex` 的断言未跑成。
+- 失败为 `DeviceServerDiedException` / gRPC `UNAVAILABLE`（`launchApp` 期间 Maestro device server 套接字关闭）。不是 120s `DEADLINE_EXCEEDED`。`--check` 通过不算真机通过。
+
+验证：
+
+```bash
+export PATH="$HOME/.maestro/bin:$PATH"
+adb -s 10AE6J03LC001JL shell pm list packages | grep -i maestro
+bash packages/app/maestro/test-provider-forms-android.sh --check
+PASEO_MAESTRO_SERIAL=10AE6J03LC001JL \
+PASEO_MAESTRO_ARTIFACTS_DIR=/tmp/grok-goal-92fae40bca6f/implementer/android-run4 \
+bash packages/app/maestro/test-provider-forms-android.sh
+```
+
+结果：两个 Maestro 包仍在。`--check`：`provider-forms-android contract: OK`。run4 `SCRIPT_EXIT=1`，`provider-after.json MISSING`；Maestro log：`Device server died during 'launchApp'`。Driver 安装本身已通过。
+
+边界：未向 `getpaseo/paseo` 推送。未改 `config/paseo.dev.json` 打开 relay。未把 `expectedRevision` 改为 required。未声称 QR/配对/完整聊天/iOS/hosted TLS relay 已完成。
+
+下一步：K3 Desktop relay-terminal reconnect。K2 需在 Maestro `launchApp` 不再弄死 Vivo device server 后重跑 shipped 脚本。
