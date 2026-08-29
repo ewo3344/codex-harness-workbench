@@ -1,0 +1,8 @@
+<resources>
+    <color name="workbench_background">#10141A</color>
+    <color name="workbench_surface">#1A222D</color>
+    <color name="workbench_terminal">#0B0E12</color>
+    <color name="workbench_text">#E7EDF5</color>
+    <color name="workbench_muted">#9CA8B8</color>
+    <color name="workbench_accent">#65A7FF</color>
+</resources>

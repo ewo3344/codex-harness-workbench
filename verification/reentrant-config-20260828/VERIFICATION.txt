@@ -1,0 +1,76 @@
+Re-entrant daemon config baseline verification
+===============================================
+
+Changed branch/field
+--------------------
+`DaemonConfigStore.patch()` and `DaemonConfigStore.reload()` now advance
+`lastKnownPersisted` before `applyReplacement()` notifies live owners. A synchronous
+`onChange` listener can therefore issue a nested patch without the outer operation
+overwriting the nested operation's persisted baseline.
+
+Artifacts
+---------
+- MODIFIED_FILE: `/home/e/workspace/codex-remote-workbench/verification/reentrant-config-20260828/MODIFIED_FILE`
+- DIFF_FILE: `/home/e/workspace/codex-remote-workbench/verification/reentrant-config-20260828/DIFF_FILE`
+- VERIFICATION.txt: `/home/e/workspace/codex-remote-workbench/verification/reentrant-config-20260828/VERIFICATION.txt`
+- ROLLBACK.sh: `/home/e/workspace/codex-remote-workbench/verification/reentrant-config-20260828/ROLLBACK.sh`
+
+Hashes
+------
+- BASELINE_FILE: `f44bb1ab7bcd3ca69859a94753a769e3ab29572a096a91a1c664530cc23cafc0`
+- MODIFIED_FILE: `39bc73a05f072c15aea033fa246f0117445ba7d5fbcc56666559549b98fd7c85`
+- rollback-copy/MODIFIED_FILE after rollback: `f44bb1ab7bcd3ca69859a94753a769e3ab29572a096a91a1c664530cc23cafc0`
+
+BASELINE behavior
+-----------------
+Command (cwd: `/home/e/workspace/codex-remote-workbench/verification/relay-reconnect-20260827/baseline-paseo`):
+`NODE_NO_WARNINGS=1 node --import tsx /home/e/workspace/codex-remote-workbench/verification/reentrant-config-20260828/reentrant-config-check.mjs packages/server/src/server/daemon-config-store.ts stale`
+
+Input: an outer `appendSystemPrompt` patch synchronously triggers a nested
+`autoArchiveAfterMerge` patch from `onChange`; the check expects the baseline's
+stale launch-controlled path classification.
+
+Literal output: `REENTRANT_CHECK nested=true append=outer autoArchive=true override=daemon.autoArchiveAfterMerge result=PASS`
+Result: exit status `0`.
+
+MODIFIED behavior
+-----------------
+Command (cwd: `/home/e/workspace/codex-remote-workbench/upstream/paseo`):
+`NODE_NO_WARNINGS=1 node --import tsx /home/e/workspace/codex-remote-workbench/verification/reentrant-config-20260828/reentrant-config-check.mjs packages/server/src/server/daemon-config-store.ts clean`
+
+Input: the same synchronous nested patch sequence; the check expects no false
+override-controlled change on the following reload.
+
+Literal output: `REENTRANT_CHECK nested=true append=outer autoArchive=true override=none result=PASS`
+Result: exit status `0`.
+
+MODIFIED regression tests
+-------------------------
+Command (cwd: `/home/e/workspace/codex-remote-workbench/upstream/paseo`):
+`NODE_NO_WARNINGS=1 ./node_modules/.bin/vitest run packages/server/src/server/daemon-config-store.test.ts --maxWorkers=1`
+
+Literal output:
+```text
+Test Files  1 passed (1)
+      Tests  37 passed (37)
+```
+Result: exit status `0`.
+
+ROLLBACK test
+-------------
+Command (cwd: `/home/e/workspace/codex-remote-workbench`):
+`verification/reentrant-config-20260828/ROLLBACK.sh`
+
+Input: copy `MODIFIED_FILE` to `rollback-copy/MODIFIED_FILE`, reverse `DIFF_FILE`,
+and compare to `BASELINE_FILE`.
+
+Literal output: `ROLLBACK_TEST copy=/home/e/workspace/codex-remote-workbench/verification/reentrant-config-20260828/rollback-copy/MODIFIED_FILE result=PASS restored_hash=f44bb1ab7bcd3ca69859a94753a769e3ab29572a096a91a1c664530cc23cafc0`
+Result: exit status `0`; rollback copy restored and `MODIFIED_FILE` remains changed.
+
+Restored behavior/status
+------------------------
+Both versions preserve the nested values in memory and on disk. The baseline then
+reports the nested field as a false external override because the outer operation
+overwrites its baseline. The modified version reports empty change lists on the
+next reload, preserving the latest nested baseline. The rollback copy exactly
+matches the baseline hash.

@@ -1,0 +1,33 @@
+MODIFIED_FILE: /home/e/workspace/codex-remote-workbench/upstream/paseo/packages/app/maestro/test-provider-forms-android.sh
+CHANGED_BRANCH_FIELD: Android provider Maestro harness / repository-root CLI anchoring and post-cancel provider snapshot assertion
+GIT_BRANCH: main
+DIFF_FILE: /home/e/workspace/codex-remote-workbench/.codex/transactions/android-provider-forms-20260828/DIFF_FILE.patch
+VERIFICATION_FILE: /home/e/workspace/codex-remote-workbench/.codex/transactions/android-provider-forms-20260828/VERIFICATION.txt
+ROLLBACK_FILE: /home/e/workspace/codex-remote-workbench/.codex/transactions/android-provider-forms-20260828/ROLLBACK.sh
+ORIGINAL_SHA256: 5ab7572ab8af115bb3b1ee9572ff606ea3177d2ec1e148779797aa166da65c1e
+MODIFIED_SHA256: b4f8285ba17ce9053941746d2a3912051915dea83b41324f16d2d16b1cc6d50f
+
+BASELINE
+COMMAND: bash -n .codex/transactions/android-provider-forms-20260828/original/test-provider-forms-android.before-cancel-check.sh
+INPUT: pre-change Android provider Maestro harness
+LITERAL_OUTPUT_RESULT: baseline shell syntax: OK
+EXIT_STATUS: 0
+
+MODIFIED
+COMMAND: bash -n upstream/paseo/packages/app/maestro/test-provider-forms-android.sh && node upstream/paseo/packages/app/maestro/check-provider-forms-android.mjs
+INPUT: repository-root CLI anchoring, post-cancel provider snapshot check, isolated Codex-only provider contract
+LITERAL_OUTPUT_RESULT: provider-forms-android contract: OK; modified shell syntax: OK
+EXIT_STATUS: 0
+
+MODIFIED_SMOKE
+COMMAND: isolated daemon on 127.0.0.1:41641; npx --prefix upstream/paseo paseo provider ls --host 127.0.0.1:41641 --json
+INPUT: fresh temporary PASEO_HOME, relay disabled, no MCP/injected MCP
+LITERAL_OUTPUT_RESULT: health={"status":"ok","timestamp":"2026-08-28T01:18:30.134Z"}; provider snapshot: codex only
+EXIT_STATUS: 0
+
+ROLLBACK
+COMMAND: .codex/transactions/android-provider-forms-20260828/ROLLBACK.sh .codex/transactions/android-provider-forms-20260828/rollback-copy/test-provider-forms-android.sh && sha256sum <rollback-copy> && cmp -s <rollback-copy> <baseline>
+INPUT: another copy containing the modified Android provider harness
+LITERAL_OUTPUT_RESULT: 5ab7572ab8af115bb3b1ee9572ff606ea3177d2ec1e148779797aa166da65c1e  rollback-copy/test-provider-forms-android.sh; rollback baseline match: 0
+EXIT_STATUS: 0
+RESTORED_BEHAVIOR_STATUS: rollback copy exactly matches the saved baseline; the workspace MODIFIED_FILE remains repository-root anchored, performs the post-cancel Codex-only snapshot assertion, and passes its contract check.

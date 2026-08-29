@@ -1,0 +1,27 @@
+# Pinned upstream inputs for reproducible development.
+
+[codex]
+repository = "https://github.com/openai/codex.git"
+license = "Apache-2.0"
+binary_version = "0.149.0"
+source_revision = "d75c85f"
+integration = "codex app-server --stdio (stable v2 plus capability-gated experimental thread/revert)"
+protocol_snapshot = "protocol/codex-app-server-0.149.0"
+
+[paseo]
+repository = "https://github.com/getpaseo/paseo.git"
+license = "AGPL-3.0"
+upstream_revision = "b5f583221436056e1fee2a3179d568a4c5ce85b9"
+revision = "e9ff3170a3cc0575bf0f3d5d3f42fc08b185ff12"
+branch = "codex-harness-workbench (local-only; fork remote pending)"
+path = "upstream/paseo"
+integration = "fork/product shell; CodexAppServerAgentClient is the initial provider path"
+local_patch = "patches/paseo/0001-feat-extend-Codex-harness-provider-and-relay-workflo.patch (apply to upstream_revision until a user-provided fork is available)"
+
+[omp]
+repository = "https://github.com/can1357/oh-my-pi.git"
+license = "MIT with component-specific third-party notices"
+revision = "160ed439ac0df594347e7d7018b813a7ffdb5e81"
+path = "upstream/oh-my-pi"
+integration = "pi-walker adapter implemented behind omp-walker feature; pi-iso experimental; pi-shell deferred"
+excluded = "plugin loader, providers, agent-core, prompts, TUI and session format"

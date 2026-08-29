@@ -1,0 +1,27 @@
+MODIFIED_FILE: /home/e/workspace/codex-remote-workbench/upstream/paseo/packages/app/src/screens/settings/custom-provider-form.ts
+CHANGED_BRANCH_FIELD: custom provider edit / models metadata and isDefault fields
+GIT_BRANCH: main
+DIFF_FILE: /home/e/workspace/codex-remote-workbench/.codex/transactions/paseo-custom-provider-20260827/DIFF_FILE.patch
+VERIFICATION_FILE: /home/e/workspace/codex-remote-workbench/.codex/transactions/paseo-custom-provider-20260827/VERIFICATION.txt
+ROLLBACK_FILE: /home/e/workspace/codex-remote-workbench/.codex/transactions/paseo-custom-provider-20260827/ROLLBACK.sh
+ORIGINAL_SHA256: 5b37e754278d148e5f8708985436dd0b86b8fbe71be6c07f9de6c34acf4afbf9
+MODIFIED_SHA256: a904a93715f6a025a024196cc92504896e796024de828e95811144361e13d9f5
+
+BASELINE
+COMMAND: npx vitest run packages/app/src/i18n/resources.test.ts packages/app/src/screens/settings/custom-provider-form.test.ts --bail=1
+INPUT: pre-metadata-preservation custom provider form; six form tests plus translation resources
+LITERAL_OUTPUT_RESULT: Test Files 2 passed (2); Tests 41 passed (41)
+EXIT_STATUS: 0
+
+MODIFIED
+COMMAND: npx vitest run packages/app/src/screens/settings/custom-provider-form.test.ts --bail=1
+INPUT: metadata-preserving model rebuild with reordered model-b/model-a fixture
+LITERAL_OUTPUT_RESULT: Test Files 1 passed (1); Tests 7 passed (7)
+EXIT_STATUS: 0
+
+ROLLBACK
+COMMAND: ROLLBACK.sh /tmp/paseo-custom-provider-rollback-test.3kBXPu && sha256sum <restored files> && cmp -s <restored files> <original files>
+INPUT: another copy containing both modified custom-provider-form files
+LITERAL_OUTPUT_RESULT: 5b37e754278d148e5f8708985436dd0b86b8fbe71be6c07f9de6c34acf4afbf9 custom-provider-form.ts; 544fe6761ea602f03b27832396da6671a72c848b6d4ee85ce575a718608025fc custom-provider-form.test.ts; ROLLBACK_MATCH=1
+EXIT_STATUS: 0
+RESTORED_BEHAVIOR_STATUS: rollback copy exactly matches the saved baseline files; the workspace MODIFIED_FILE remains metadata-preserving and passes seven tests.

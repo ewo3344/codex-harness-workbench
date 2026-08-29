@@ -1,0 +1,38 @@
+--- BASELINE_FILE
++++ MODIFIED_FILE
+@@ -1,3 +1,10 @@
+-remote_control=disabled
+-session_transport=none
++remote_control=enabled
++session_transport=pty-e2ee-relay
++android_client=enabled
++web_relay_terminal=verified
++browser_daemon_direct_socket=blocked
++relay_plaintext_probe=absent
++relay_deployment_reconnect=verified
++relay_browser_ci=enabled
++relay_commit=3fc41c96c8c63f3a7109e832899cc57d473c4531
+
+--- Browser relay validation branch
++++ packages/app/e2e/browser/relay-terminal.real.spec.ts
+@@
++  test("the packaged Web UI controls a terminal only through the E2EE Wrangler relay", ...)
++  assert browser opens no direct daemon WebSocket
++  assert relay frames omit three terminal plaintext probes
++  assert terminal create/subscribe, input/output, and resize through real PTY
+
+--- Relay deployment validation branch
++++ packages/app/e2e/browser/relay-deployment-reconnect.real.spec.ts
+@@
++  assert stream pauses while relay is unavailable
++  assert running state survives deployment
++  assert stream resumes without user action
+
+--- CI branch
++++ .github/workflows/ci.yml
+@@
++  relay-browser-e2e:
++    pinned relay commit: 3fc41c96c8c63f3a7109e832899cc57d473c4531
++    otp-version: 29.0.3
++    elixir-version: 1.20.2
++    command: npm run test:e2e:relay-deployment --workspace=@getpaseo/app

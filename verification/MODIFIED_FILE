@@ -1,0 +1,10 @@
+default_page=terminal-codex-cli
+remote_control=enabled
+session_transport=pty-e2ee-relay
+android_client=enabled
+web_relay_terminal=verified
+browser_daemon_direct_socket=blocked
+relay_plaintext_probe=absent
+relay_deployment_reconnect=verified
+relay_browser_ci=enabled
+relay_commit=3fc41c96c8c63f3a7109e832899cc57d473c4531

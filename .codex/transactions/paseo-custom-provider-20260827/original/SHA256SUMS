@@ -1,0 +1,11 @@
+28917d77b11f2b4c837a169bc7874155322a11e75b58ffa0108739969456b444  packages/app/src/screens/settings/providers-section.tsx
+3f842b453e0e3171072367e7edc4ac2826d9b0b46fb14b70872990ef1856582a  packages/app/src/screens/settings/providers-section.test.tsx
+3c53172a7b7667cc87a835834dbd5a850ddaa29c1b951d06ed2265937b6756ac  packages/app/src/i18n/resources/ar.ts
+9d319e2cad2323f6e14f5595f4f9514411872da48bd839a4284e612e81cf801f  packages/app/src/i18n/resources/en.ts
+7976a28af7d53d52da18c2f4b3d721fc6bf86b05ee3910b25ee2438e85b36163  packages/app/src/i18n/resources/es.ts
+9b76e08b0186468995c609d309025228a061abb228286992b57455248b850a57  packages/app/src/i18n/resources/fr.ts
+2e385c13e5ef7bc0cab54dd2ea76a77fcddcae5ec12934804afcafeba5858985  packages/app/src/i18n/resources/ja.ts
+30560abc63dde098107a6e82a1dbc4c12e5d0fb7c86f178931b0cfb42512f78e  packages/app/src/i18n/resources/ko.ts
+aaa88cd3efc9d1d0ce2407fa895c934d57d51311b08e02d6e209dc9f5c9b302a  packages/app/src/i18n/resources/pt-BR.ts
+7468aefdd170f53b34141c1d1e89578d5c57f3ba96343c4ef74638c5b3d0fb5e  packages/app/src/i18n/resources/ru.ts
+6533c22b8fe2b716c9ea52932d79cd85037f26adbd6447ae0e62383a1f5a68a8  packages/app/src/i18n/resources/zh-CN.ts

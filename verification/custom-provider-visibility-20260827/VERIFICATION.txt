@@ -1,0 +1,72 @@
+Custom provider visibility verification
+Date: 2026-08-27
+
+Changed branch/field:
+- upstream/paseo/packages/app/src/screens/settings/providers-section.tsx
+- providerDefinitions visibility filter
+- source: "custom" provider rows and their diagnostic-sheet entry
+
+Artifacts:
+- /home/e/workspace/codex-remote-workbench/verification/custom-provider-visibility-20260827/MODIFIED_FILE.tsx
+- /home/e/workspace/codex-remote-workbench/verification/custom-provider-visibility-20260827/DIFF_FILE.patch
+- /home/e/workspace/codex-remote-workbench/verification/custom-provider-visibility-20260827/VERIFICATION.txt
+- /home/e/workspace/codex-remote-workbench/verification/custom-provider-visibility-20260827/ROLLBACK.sh
+
+Observed pre-edit source hashes:
+d93d3e7eb202b8aeaf4e4ef44f245029fd964ff7f622d7790abe7f9ea010baec  providers-section.tsx
+106ea297f2a7c297825a1f04d2a3bec68f4e2d795fff11e9ae00fbc3d6791d52  providers-section.test.tsx
+
+Modified source hashes:
+fc1477bbf084fec2d4b03182ec1bc36353c37ed2cd61c2b7ca171eadfb81d1f0  providers-section.tsx
+c0433da5df07ccfb1da1c46d3be47cbff457c07ea2d9a6e645e44302b8175c55  providers-section.test.tsx
+
+BASELINE
+Command:
+cd /home/e/workspace/codex-remote-workbench/upstream/paseo && ./node_modules/.bin/vitest run packages/app/src/screens/settings/providers-section.test.tsx --maxWorkers=1
+Input: Codex-only settings provider filter
+Literal result:
+Test Files  1 passed (1)
+Tests  5 passed (5)
+Exit status: 0
+
+MODIFIED
+Command:
+cd /home/e/workspace/codex-remote-workbench/upstream/paseo && ./node_modules/.bin/vitest run packages/app/src/screens/settings/providers-section.test.tsx --maxWorkers=1
+Input: builtin Claude, Codex, and source: custom ZAI provider snapshot entries
+Literal result:
+Test Files  1 passed (1)
+Tests  5 passed (5)
+Exit status: 0
+
+Command:
+cd /home/e/workspace/codex-remote-workbench/upstream/paseo && npm run lint -- packages/app/src/screens/settings/providers-section.tsx packages/app/src/screens/settings/providers-section.test.tsx
+Input: changed UI source and test
+Literal result:
+Found 0 warnings and 0 errors.
+Exit status: 0
+
+Command:
+cd /home/e/workspace/codex-remote-workbench/upstream/paseo && npm run typecheck --workspace=@getpaseo/app
+Input: complete app TypeScript program
+Literal result: tsgo --noEmit completed without diagnostics
+Exit status: 0
+
+ROLLBACK
+Command:
+cd /home/e/workspace/codex-remote-workbench && ./verification/custom-provider-visibility-20260827/ROLLBACK.sh verification/custom-provider-visibility-20260827/rollback-copy
+Input: isolated copies of modified providers-section source and test
+Literal result: no stdout/stderr
+Exit status: 0
+
+Commands:
+cd /home/e/workspace/codex-remote-workbench && cmp -s verification/custom-provider-visibility-20260827/BASELINE/providers-section.tsx verification/custom-provider-visibility-20260827/rollback-copy/providers-section.tsx
+cd /home/e/workspace/codex-remote-workbench && cmp -s verification/custom-provider-visibility-20260827/BASELINE/providers-section.test.tsx verification/custom-provider-visibility-20260827/rollback-copy/providers-section.test.tsx
+Input: rollback outputs compared with the preserved patch baselines
+Literal result: both file pairs are byte-identical
+Exit status: 0
+
+Restored behavior/status:
+- The isolated rollback copy restores the Codex-only visibility behavior.
+- The workspace source remains modified and shows Codex plus snapshot entries whose source is custom.
+- Builtin entries remain hidden from this custom-provider settings slice, even when present in the snapshot.
+- This does not make newly PATCHed providers live immediately; daemon restart remains required because its published-provider allowlist is created at startup.

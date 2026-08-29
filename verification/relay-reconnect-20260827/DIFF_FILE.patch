@@ -1,0 +1,310 @@
+diff --git a/packages/server/src/server/daemon-e2e/relay-transport.e2e.test.ts b/packages/server/src/server/daemon-e2e/relay-transport.e2e.test.ts
+index 3edede8..31f6bb1 100644
+--- a/packages/server/src/server/daemon-e2e/relay-transport.e2e.test.ts
++++ b/packages/server/src/server/daemon-e2e/relay-transport.e2e.test.ts
+@@ -4,9 +4,12 @@ import pino from "pino";
+ import { Writable } from "node:stream";
+ import net from "node:net";
+ import path from "node:path";
++import { createRequire } from "node:module";
++import { fileURLToPath } from "node:url";
+ import { spawn, type ChildProcess } from "node:child_process";
+ import { Buffer } from "node:buffer";
+ 
++import { DaemonClient, type WebSocketLike } from "@getpaseo/client/internal/daemon-client";
+ import { generateLocalPairingOffer } from "../pairing-offer.js";
+ import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
+ import { createClientChannel, type Transport } from "@getpaseo/relay/e2ee";
+@@ -20,10 +23,13 @@ import {
+ } from "@getpaseo/relay";
+ import { buildRelayWebSocketUrl } from "@getpaseo/protocol/daemon-endpoints";
+ import { ConnectionOfferSchema } from "@getpaseo/protocol/connection-offer";
+-import { WSOutboundMessageSchema } from "@getpaseo/protocol/messages";
++import { CLIENT_CAPS } from "@getpaseo/protocol/client-capabilities";
++import { WSOutboundMessageSchema, type SessionOutboundMessage } from "@getpaseo/protocol/messages";
+ 
+ const nodeMajor = Number((process.versions.node ?? "0").split(".")[0] ?? "0");
+ const shouldRunRelayE2e = process.env.FORCE_RELAY_E2E === "1" || nodeMajor < 25;
++const require = createRequire(import.meta.url);
++const wranglerCliPath = require.resolve("wrangler/bin/wrangler.js");
+ 
+ function createCapturingLogger() {
+   const lines: string[] = [];
+@@ -179,6 +185,49 @@ async function waitForCapturedLog(
+   throw new Error(`Timed out waiting for captured log. Recent logs:\n${lines.slice(-20).join("")}`);
+ }
+ 
++async function waitForCondition(
++  predicate: () => boolean,
++  timeout = 20_000,
++  interval = 10,
++): Promise<void> {
++  const start = Date.now();
++  while (Date.now() - start < timeout) {
++    if (predicate()) {
++      return;
++    }
++    await new Promise((resolve) => setTimeout(resolve, interval));
++  }
++  throw new Error(`Timed out waiting for condition after ${timeout}ms`);
++}
++
++function isAssistantTimelineMessage(
++  message: SessionOutboundMessage,
++  agentId: string,
++  text?: string,
++): boolean {
++  return (
++    message.type === "agent_stream" &&
++    message.payload.agentId === agentId &&
++    message.payload.event.type === "timeline" &&
++    message.payload.event.item.type === "assistant_message" &&
++    (text === undefined || message.payload.event.item.text === text)
++  );
++}
++
++function countAssistantTimelineMessages(
++  messages: SessionOutboundMessage[],
++  agentId: string,
++  text: string,
++): number {
++  let count = 0;
++  for (const message of messages) {
++    if (isAssistantTimelineMessage(message, agentId, text)) {
++      count += 1;
++    }
++  }
++  return count;
++}
++
+ (shouldRunRelayE2e ? describe : describe.skip)("Relay transport (E2EE) - daemon E2E", () => {
+   let relayPort: number;
+   let relayProcess: ChildProcess | null = null;
+@@ -187,7 +236,10 @@ async function waitForCapturedLog(
+   const startRelay = async (options: { useLocalRelay?: boolean } = {}) => {
+     relayStdoutLines = [];
+     relayPort = await getAvailablePort();
+-    const relayDir = path.resolve(process.cwd(), "../relay");
++    const relayDir = path.resolve(
++      path.dirname(fileURLToPath(import.meta.url)),
++      "../../../../relay",
++    );
+     const relayArgs = [
+       "wrangler",
+       "dev",
+@@ -202,7 +254,7 @@ async function waitForCapturedLog(
+     if (options.useLocalRelay) {
+       relayArgs.push("--var", "PASEO_RELAY_UPSTREAM:");
+     }
+-    relayProcess = spawn("npx", relayArgs, {
++    relayProcess = spawn(process.execPath, [wranglerCliPath, ...relayArgs.slice(1)], {
+       cwd: relayDir,
+       env: { ...process.env },
+       stdio: ["ignore", "pipe", "pipe"],
+@@ -783,4 +835,206 @@ async function waitForCapturedLog(
+       await stopRelay();
+     }
+   }, 90000);
++
++  test("E2EE relay client reconnects and catches up committed timeline rows", async () => {
++    process.env.PASEO_PRIMARY_LAN_IP = "192.168.1.12";
++
++    const { logger, lines } = createCapturingLogger();
++    await startRelay({ useLocalRelay: true });
++
++    const daemon = await createTestPaseoDaemon({
++      listen: "127.0.0.1",
++      logger,
++      relayEnabled: true,
++      relayEndpoint: `127.0.0.1:${relayPort}`,
++    });
++
++    let client: DaemonClient | null = null;
++    const sockets: WebSocket[] = [];
++    let unsubscribeRaw: (() => void) | null = null;
++
++    try {
++      const offerUrl = await getPairingOfferUrl({
++        paseoHome: daemon.paseoHome,
++        relayEnabled: daemon.config.relayEnabled,
++        relayEndpoint: daemon.config.relayEndpoint,
++        relayPublicEndpoint: daemon.config.relayPublicEndpoint,
++        appBaseUrl: daemon.config.appBaseUrl,
++      });
++      const { serverId, daemonPublicKeyB64 } = decodeOfferFromFragmentUrl(offerUrl);
++      const relayUrl = buildRelayWebSocketUrl({
++        endpoint: `127.0.0.1:${relayPort}`,
++        useTls: false,
++        serverId,
++        role: "client",
++      });
++
++      client = new DaemonClient({
++        url: relayUrl,
++        clientId: `cid_relay_reconnect_${Date.now().toString(36)}`,
++        clientType: "cli",
++        connectTimeoutMs: 20_000,
++        e2ee: { enabled: true, daemonPublicKeyB64 },
++        reconnect: { enabled: true, baseDelayMs: 50, maxDelayMs: 100 },
++        capabilities: { [CLIENT_CAPS.selectiveAgentTimeline]: true },
++        webSocketFactory: (target, options) => {
++          const socket = new WebSocket(target, options?.protocols, {
++            headers: options?.headers,
++          });
++          sockets.push(socket);
++          return socket as unknown as WebSocketLike;
++        },
++      });
++
++      await client.connect();
++      const agent = await client.createAgent({
++        provider: "codex",
++        cwd: daemon.staticDir,
++        title: "Relay reconnect timeline test",
++        modeId: "full-access",
++      });
++      await client.fetchAgents({
++        subscribe: { subscriptionId: "relay-reconnect-timeline" },
++      });
++      await client.setAgentTimelineSubscription([agent.id]);
++
++      await daemon.daemon.agentManager.appendTimelineItem(agent.id, {
++        type: "assistant_message",
++        text: "baseline committed row",
++      });
++      const baseline = await client.fetchAgentTimeline(agent.id, {
++        direction: "tail",
++        limit: 0,
++        projection: "canonical",
++      });
++      const baselineCursor = baseline.endCursor;
++      expect(baseline.epoch).not.toBe("");
++      expect(baselineCursor).not.toBeNull();
++      if (!baselineCursor) {
++        throw new Error("Expected a timeline cursor after appending the baseline row");
++      }
++
++      const liveMessages: SessionOutboundMessage[] = [];
++      unsubscribeRaw = client.subscribeRawMessages((message) => {
++        if (isAssistantTimelineMessage(message, agent.id)) {
++          liveMessages.push(message);
++        }
++      });
++
++      await daemon.daemon.agentManager.emitLiveTimelineItem(agent.id, {
++        type: "assistant_message",
++        text: "provisional before relay disconnect",
++      });
++      await waitForCondition(
++        () =>
++          countAssistantTimelineMessages(
++            liveMessages,
++            agent.id,
++            "provisional before relay disconnect",
++          ) > 0,
++      );
++      const provisionalBeforeDisconnect = liveMessages.find((message) =>
++        isAssistantTimelineMessage(message, agent.id, "provisional before relay disconnect"),
++      );
++      if (!provisionalBeforeDisconnect || provisionalBeforeDisconnect.type !== "agent_stream") {
++        throw new Error("Expected a provisional timeline event before the relay disconnect");
++      }
++      expect(provisionalBeforeDisconnect.payload.epoch).toBe(baseline.epoch);
++      expect(provisionalBeforeDisconnect.payload.seq).toBeUndefined();
++
++      const firstSocket = sockets[0];
++      expect(firstSocket).toBeDefined();
++      if (!firstSocket) {
++        throw new Error("Expected the relay client to create an initial WebSocket");
++      }
++      const socketCountBeforeDisconnect = sockets.length;
++      const disconnectedAt = Date.now();
++      firstSocket.terminate();
++      await waitForCondition(() => client?.getConnectionState().status === "disconnected");
++
++      await daemon.daemon.agentManager.appendTimelineItem(agent.id, {
++        type: "assistant_message",
++        text: "committed while relay disconnected",
++      });
++
++      await waitForCondition(
++        () =>
++          client?.getConnectionState().status === "connected" &&
++          sockets.length > socketCountBeforeDisconnect,
++        20_000,
++      );
++      expect(Date.now() - disconnectedAt).toBeLessThan(5_000);
++
++      const catchUp = await client.fetchAgentTimeline(agent.id, {
++        direction: "after",
++        cursor: baselineCursor,
++        limit: 0,
++        projection: "canonical",
++      });
++      expect(catchUp.epoch).toBe(baseline.epoch);
++      expect(catchUp.reset).toBe(false);
++      expect(catchUp.staleCursor).toBe(false);
++      expect(catchUp.gap).toBe(false);
++      expect(catchUp.entries).toHaveLength(1);
++      expect(catchUp.startCursor).toEqual({
++        epoch: baselineCursor.epoch,
++        seq: baselineCursor.seq + 1,
++      });
++      expect(catchUp.endCursor).toEqual({
++        epoch: baselineCursor.epoch,
++        seq: baselineCursor.seq + 1,
++      });
++      expect(catchUp.entries[0]?.item).toEqual({
++        type: "assistant_message",
++        text: "committed while relay disconnected",
++      });
++
++      // Re-establish the live subscription after reconnect, then ensure the next
++      // provisional event is delivered once and remains explicitly non-replayable.
++      await client.fetchAgents({
++        subscribe: { subscriptionId: "relay-reconnect-timeline-after" },
++      });
++      await client.setAgentTimelineSubscription([agent.id]);
++      expect(
++        countAssistantTimelineMessages(
++          liveMessages,
++          agent.id,
++          "provisional before relay disconnect",
++        ),
++      ).toBe(1);
++      liveMessages.length = 0;
++      await daemon.daemon.agentManager.emitLiveTimelineItem(agent.id, {
++        type: "assistant_message",
++        text: "live after relay reconnect",
++      });
++      await waitForCondition(
++        () =>
++          countAssistantTimelineMessages(liveMessages, agent.id, "live after relay reconnect") > 0,
++      );
++      await new Promise((resolve) => setTimeout(resolve, 100));
++
++      expect(
++        countAssistantTimelineMessages(liveMessages, agent.id, "live after relay reconnect"),
++      ).toBe(1);
++      const livePayload = liveMessages.find((message) =>
++        isAssistantTimelineMessage(message, agent.id, "live after relay reconnect"),
++      );
++      if (!livePayload || livePayload.type !== "agent_stream") {
++        throw new Error("Expected a matching live timeline event");
++      }
++      expect(livePayload.payload.epoch).toBe(baseline.epoch);
++      expect(livePayload.payload.seq).toBeUndefined();
++    } catch (err) {
++      const tail = lines.slice(-50).join("");
++      // Only prints on failure to help diagnose relay reconnect/handshake issues.
++      // eslint-disable-next-line no-console
++      console.error("daemon logs (tail):\n", tail);
++      throw err;
++    } finally {
++      unsubscribeRaw?.();
++      await client?.close();
++      await daemon.close();
++      await stopRelay();
++    }
++  }, 90000);
+ });

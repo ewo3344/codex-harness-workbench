@@ -1,0 +1,51 @@
+--- a/packages/app/src/screens/settings/custom-provider-form.ts
++++ b/packages/app/src/screens/settings/custom-provider-form.ts
+@@ -129,9 +129,23 @@
+   existingConfig?: MutableProviderConfig,
+ ): MutableProviderConfig {
+   const previous = readRecord(existingConfig);
+-  const models = parseModelIds(draft.modelIds).map((id, index) =>
+-    index === 0 ? { id, label: id, isDefault: true } : { id, label: id },
++  const previousModels = Array.isArray(previous.models) ? previous.models : [];
++  const previousModelsById = new Map(
++    previousModels.map((model) => {
++      const record = readRecord(model);
++      return [readString(record.id), record] as const;
++    }),
+   );
++  const models = parseModelIds(draft.modelIds).map((id, index) => {
++    const existingModel = previousModelsById.get(id) ?? {};
++    const model = Object.assign({}, existingModel, {
++      id,
++      label: readString(existingModel.label) || id,
++    });
++    if (index === 0) model.isDefault = true;
++    else if (existingModel.isDefault !== undefined) model.isDefault = false;
++    return model;
++  });
+   const common = {
+     ...previous,
+     extends: extendsFromKind(draft.kind),
+--- a/packages/app/src/screens/settings/custom-provider-form.test.ts
++++ b/packages/app/src/screens/settings/custom-provider-form.test.ts
+@@ -139,4 +139,20 @@
+     });
+   });
+ 
++  it("preserves model metadata while changing the default model order", () => {
++    const config = buildCustomProviderConfig(draft({ modelIds: "model-b\nmodel-a" }), {
++      extends: "codex",
++      label: "Existing",
++      env: { OPENAI_BASE_URL: "https://api.example.test" },
++      models: [
++        { id: "model-a", label: "Model A", description: "Fast", isDefault: true },
++        { id: "model-b", label: "Model B", description: "Deep" },
++      ],
++    });
++
++    expect(config.models).toEqual([
++      { id: "model-b", label: "Model B", description: "Deep", isDefault: true },
++      { id: "model-a", label: "Model A", description: "Fast", isDefault: false },
++    ]);
++  });
+ });

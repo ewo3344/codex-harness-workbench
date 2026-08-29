@@ -1,0 +1,57 @@
+--- /home/e/workspace/codex-remote-workbench/.codex/transactions/android-provider-forms-20260828/original/test-provider-forms-android.before-cancel-check.sh	2026-08-28 09:19:32.846044149 +0800
++++ /home/e/workspace/codex-remote-workbench/.codex/transactions/android-provider-forms-20260828/MODIFIED_FILE	2026-08-28 09:19:04.192739572 +0800
+@@ -22,6 +22,7 @@
+ SERVER_RUNNER="$REPO_ROOT/packages/server/dist/scripts/supervisor-entrypoint.js"
+ OUT_DIR="${PASEO_MAESTRO_ARTIFACTS_DIR:-$(mktemp -d /tmp/paseo-provider-forms-android-XXXXXX)}"
+ PASEO_HOME="$OUT_DIR/paseo-home"
++PASEO_CLI=(npx --prefix "$REPO_ROOT" paseo)
+ DAEMON_PID=""
+ LOGCAT_PID=""
+ PORT_REVERSED=0
+@@ -34,6 +35,23 @@
+   fi
+ }
+ 
++verify_cancel_did_not_persist_provider() {
++  local snapshot="$1"
++  node --input-type=module - "$snapshot" <<'NODE'
++import assert from "node:assert/strict";
++import { readFile } from "node:fs/promises";
++
++const file = process.argv[2];
++const entries = JSON.parse(await readFile(file, "utf8"));
++assert.ok(Array.isArray(entries), "provider ls output must be an array");
++assert.deepEqual(
++  entries.map((entry) => entry.provider),
++  ["codex"],
++  "cancelling the editor must leave the isolated daemon with Codex only",
++);
++NODE
++}
++
+ choose_port() {
+   node --input-type=module <<'NODE'
+ import net from "node:net";
+@@ -138,7 +156,7 @@
+ PASEO_DICTATION_ENABLED=0 \
+ PASEO_VOICE_MODE_ENABLED=0 \
+ CI=true \
+-npx paseo daemon start --home "$PASEO_HOME" --port "$PASEO_MAESTRO_PORT" --foreground --no-relay --no-mcp --no-inject-mcp \
++"${PASEO_CLI[@]}" daemon start --home "$PASEO_HOME" --port "$PASEO_MAESTRO_PORT" --foreground --no-relay --no-mcp --no-inject-mcp \
+   >"$OUT_DIR/daemon.log" 2>&1 &
+ DAEMON_PID="$!"
+ 
+@@ -182,4 +200,13 @@
+ "${ADB[@]}" exec-out screencap -p >"$OUT_DIR/final-state.png" 2>/dev/null || true
+ echo "PASS: Android provider list and OpenAI-compatible, Anthropic-compatible, and ACP forms are reachable."
+ 
++echo "Verifying cancelled form did not persist a provider..."
++if ! PASEO_HOME="$PASEO_HOME" PASEO_HOST="$PASEO_MAESTRO_DIRECT_ENDPOINT" \
++  "${PASEO_CLI[@]}" provider ls --host "$PASEO_MAESTRO_DIRECT_ENDPOINT" --json \
++  >"$OUT_DIR/provider-after.json" 2>"$OUT_DIR/provider-after.stderr"; then
++  echo "Unable to read provider snapshot after Maestro. Artifacts: $OUT_DIR" >&2
++  exit 1
++fi
++verify_cancel_did_not_persist_provider "$OUT_DIR/provider-after.json"
++echo "PASS: cancelling the editor left the isolated daemon with Codex only."
+ echo "Artifacts: $OUT_DIR"

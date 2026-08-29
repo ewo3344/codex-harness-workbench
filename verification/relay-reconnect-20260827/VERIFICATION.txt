@@ -1,0 +1,47 @@
+Relay reconnect verification: 2026-08-27
+
+Changed branch/field:
+- Branch: Paseo relay E2EE daemon transport test.
+- Fields: Wrangler process/relay path resolution; DaemonClient reconnect,
+  timeline cursor catch-up, selective timeline subscription, and provisional
+  event epoch/no-seq exactly-once assertions.
+
+Artifacts:
+- MODIFIED_FILE: verification/relay-reconnect-20260827/MODIFIED_FILE.ts
+- DIFF_FILE: verification/relay-reconnect-20260827/DIFF_FILE.patch
+- VERIFICATION: verification/relay-reconnect-20260827/VERIFICATION.txt
+- ROLLBACK: verification/relay-reconnect-20260827/ROLLBACK.sh
+
+BASELINE
+Command: FORCE_RELAY_E2E=1 ./node_modules/.bin/vitest run packages/server/src/server/daemon-e2e/relay-transport.e2e.test.ts --maxWorkers=1
+Input: baseline Paseo worktree at verification/relay-reconnect-20260827/baseline-paseo
+Literal result: 4 tests failed; each failed to spawn `npx` with `ENOENT` before relay startup.
+Exit status: 1
+
+MODIFIED
+Command: FORCE_RELAY_E2E=1 ./node_modules/.bin/vitest run packages/server/src/server/daemon-e2e/relay-transport.e2e.test.ts --maxWorkers=1
+Input: active modified Paseo source and local Wrangler relay.
+Literal result: Test Files 1 passed (1); Tests 5 passed (5); exit code 0.
+Exit status: 0
+
+UNIFIED MODIFIED
+Command: ./scripts/verify-relay.sh
+Input: repository root; isolated local Wrangler relay, temporary daemon homes,
+and temporary work directories created by each suite.
+Literal result: crypto 3 passed (3); pairing 1 passed (1); reconnect 1 passed
+(1), with the reconnect file reporting 1 passed and 4 skipped; exit code 0.
+Exit status: 0
+
+ROLLBACK
+Command: ./verification/relay-reconnect-20260827/ROLLBACK.sh
+Input: verification/relay-reconnect-20260827/baseline-tree/relay-transport.e2e.test.ts
+Literal result: SHA-256 15c90ded70683e8e5693be7e7e6f141f3ad0e8be58db7625104a495783d21f73; baseline and rollback-tree files compare equal.
+Exit status: 0
+
+Restored behavior/status:
+- ROLLBACK restored the test-copy behavior and original baseline hash.
+- The active MODIFIED_FILE and active Paseo source remain on the changed branch.
+- Active modified source hash: b99d2647fd7bdfbd29f361a688840ceb06e5e0d65c3ae129022b878b3ccb0138.
+- `reset`, `staleCursor`, and `gap` remain false for the recovered committed
+  row; provisional/live events retain the epoch, omit seq, and are delivered
+  exactly once.

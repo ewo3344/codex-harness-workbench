@@ -1,0 +1,69 @@
+Codex Remote Workbench verification record
+
+Changed branch/field: main / default_page=terminal-codex-cli; web_relay_terminal=verified; relay_deployment_reconnect=verified; relay_browser_ci=enabled.
+
+Four artifacts:
+- /home/e/workspace/codex-remote-workbench/verification/MODIFIED_FILE
+- /home/e/workspace/codex-remote-workbench/verification/DIFF_FILE
+- /home/e/workspace/codex-remote-workbench/verification/VERIFICATION.txt
+- /home/e/workspace/codex-remote-workbench/verification/ROLLBACK.sh
+
+BASELINE command: cd /home/e/workspace/codex-remote-workbench/verification && sha256sum BASELINE_FILE && cmp -s BASELINE_FILE BASELINE_FILE && printf 'BASELINE_TEST_OK: default_page=terminal-codex-cli remote_control=disabled session_transport=none\n'
+BASELINE input: the preserved BASELINE_FILE; no stdin
+BASELINE literal output:
+971c6bd6bc83b478709a3e425b2af41fadce92e264ded96fb07e92ae855ed19d  BASELINE_FILE
+BASELINE_TEST_OK: default_page=terminal-codex-cli remote_control=disabled session_transport=none
+BASELINE result: original hash preserved; exit status 0
+
+MODIFIED fixture command: cd /home/e/workspace/codex-remote-workbench/verification && sha256sum MODIFIED_FILE && rg -N '^(default_page|web_relay_terminal|browser_daemon_direct_socket|relay_plaintext_probe|relay_deployment_reconnect|relay_browser_ci)=' MODIFIED_FILE && printf 'MODIFIED_TEST_OK: browser relay fields verified\n'
+MODIFIED fixture input: live MODIFIED_FILE; no stdin
+MODIFIED fixture literal output:
+2c138aefde620ef523074c50217b7c7506f75376d0ceac282b2d27cda4b8a596  MODIFIED_FILE
+default_page=terminal-codex-cli
+web_relay_terminal=verified
+browser_daemon_direct_socket=blocked
+relay_plaintext_probe=absent
+relay_deployment_reconnect=verified
+relay_browser_ci=enabled
+MODIFIED_TEST_OK: browser relay fields verified
+MODIFIED fixture result: live fixture retains all modified fields; exit status 0
+
+MODIFIED browser command: cd /home/e/workspace/codex-remote-workbench/upstream/paseo && PASEO_RELAY_CHECKOUT=/tmp/paseo-relay npm --prefix packages/app run test:e2e:relay-deployment
+MODIFIED browser input: Paseo Web, packaged daemon, random loopback ports, local Wrangler E2EE relay, and pinned Elixir relay checkout 3fc41c96c8c63f3a7109e832899cc57d473c4531
+MODIFIED browser literal result:
+Relay deployment measurements: {"reconnectToastDelayMs":1331,"reconnectToastVisibleMs":5112,"totalReconnectMs":6443,"relayStartupMs":533,"streamPausedWhileDisconnected":true,"runningStatePreserved":true,"streamResumedWithoutUserAction":true}
+2 passed (40.4s)
+MODIFIED browser result: packaged Web UI created/subscribed a real PTY, exchanged input/output, resized it only through the relay, opened no direct daemon WebSocket, and exposed none of the three checked terminal plaintext probes in relay frames; deployment reconnect preserved and resumed the stream; exit status 0
+
+DEFAULT PAGE command: cd /home/e/workspace/codex-remote-workbench/upstream/paseo/packages/app && npx playwright test --project=browser e2e/browser/new-workspace-default-terminal.spec.ts --workers=1
+DEFAULT PAGE input: daemon default terminal profiles and a fresh New Workspace page
+DEFAULT PAGE literal output: 1 passed (14.5s)
+DEFAULT PAGE result: Codex CLI remains the default new-page launcher with --no-alt-screen; exit status 0
+
+CI CONTRACT command: cd /home/e/workspace/codex-remote-workbench/upstream/paseo && node --test scripts/ci-workflow.test.mjs scripts/daemon-launch-contract.test.mjs
+CI CONTRACT input: .github/workflows/ci.yml and static CI/daemon contracts
+CI CONTRACT literal output:
+tests 9
+pass 9
+fail 0
+CI CONTRACT result: relay-browser-e2e is a statically gated browser/relay/server job; exit status 0
+
+TYPECHECK command: cd /home/e/workspace/codex-remote-workbench/upstream/paseo && npm --prefix packages/app run typecheck
+TYPECHECK input: App and Playwright TypeScript sources
+TYPECHECK literal output: npm notice run tsgo --noEmit
+TYPECHECK result: exit status 0
+
+LINT command: cd /home/e/workspace/codex-remote-workbench/upstream/paseo && npx oxlint packages/app/playwright.config.ts packages/app/e2e/browser/relay-terminal.real.spec.ts packages/app/e2e/support/helpers/local-elixir-relay.ts packages/app/e2e/support/helpers/local-wrangler-relay.ts packages/app/e2e/support/helpers/relay-deployment.ts packages/app/e2e/support/helpers/packaged-web-daemon.ts
+LINT input: relay browser E2E configuration, spec, and helpers
+LINT literal output: Found 0 warnings and 0 errors.
+LINT result: exit status 0
+
+ROLLBACK command: cd /home/e/workspace/codex-remote-workbench/verification && ./ROLLBACK.sh /home/e/workspace/codex-remote-workbench/verification/rollback-web-relay/MODIFIED_FILE && sha256sum /home/e/workspace/codex-remote-workbench/verification/rollback-web-relay/MODIFIED_FILE && cmp -s BASELINE_FILE /home/e/workspace/codex-remote-workbench/verification/rollback-web-relay/MODIFIED_FILE && printf 'ROLLBACK_TEST_OK: disposable copy matches BASELINE_FILE\n'
+ROLLBACK input: live MODIFIED_FILE copied to disposable rollback-web-relay/MODIFIED_FILE
+ROLLBACK literal output:
+ROLLBACK_OK: /home/e/workspace/codex-remote-workbench/verification/rollback-web-relay/MODIFIED_FILE restored from BASELINE_FILE
+971c6bd6bc83b478709a3e425b2af41fadce92e264ded96fb07e92ae855ed19d  /home/e/workspace/codex-remote-workbench/verification/rollback-web-relay/MODIFIED_FILE
+ROLLBACK_TEST_OK: disposable copy matches BASELINE_FILE
+ROLLBACK result: disposable copy byte-compares equal to BASELINE_FILE; exit status 0
+
+Restored behavior/status: rollback-web-relay/MODIFIED_FILE has remote_control=disabled and session_transport=none. The live MODIFIED_FILE remains changed with the Codex CLI default page, verified Web E2EE relay terminal, blocked direct daemon socket, absent checked plaintext probes, verified deployment reconnect, and enabled relay browser CI gate.

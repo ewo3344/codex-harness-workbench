@@ -1,0 +1,120 @@
+--- verification/reentrant-config-20260828/BASELINE_FILE	2026-08-28 09:27:45.382741490 +0800
++++ verification/reentrant-config-20260828/MODIFIED_FILE	2026-08-28 09:27:45.383741502 +0800
+@@ -4,6 +4,7 @@
+   type PersistedConfig,
+ } from "./persisted-config.js";
+ import { ProviderOverrideSchema } from "./agent/provider-launch-config.js";
++import { PROVIDER_CREDENTIAL_ENV_KEYS } from "./provider-config-credentials.js";
+ import {
+   MutableDaemonConfigSchema,
+   MutableDaemonConfigPatchSchema,
+@@ -249,6 +250,22 @@
+   return Array.from(compacted).sort();
+ }
+ 
++function omitEmptyProviderCredentialMarkers(
++  providers: MutableDaemonConfig["providers"],
++): MutableDaemonConfig["providers"] {
++  return Object.fromEntries(
++    Object.entries(providers).map(([providerId, provider]) => {
++      if (!provider.env) return [providerId, provider];
++      const env = Object.fromEntries(
++        Object.entries(provider.env).filter(
++          ([key, value]) => value !== "" || !PROVIDER_CREDENTIAL_ENV_KEYS.has(key),
++        ),
++      );
++      return [providerId, { ...provider, env }];
++    }),
++  );
++}
++
+ function pickSupportedPatchFields(patch: MutableDaemonConfigPatch): SupportedMutableConfigPatch {
+   return {
+     ...(patch.relay?.enabled !== undefined ? { relay: { enabled: patch.relay.enabled } } : {}),
+@@ -258,7 +275,9 @@
+     ...(patch.browserTools?.enabled !== undefined
+       ? { browserTools: { enabled: patch.browserTools.enabled } }
+       : {}),
+-    ...(patch.providers !== undefined ? { providers: patch.providers } : {}),
++    ...(patch.providers !== undefined
++      ? { providers: omitEmptyProviderCredentialMarkers(patch.providers) }
++      : {}),
+     ...(patch.removeProviders !== undefined ? { removeProviders: patch.removeProviders } : {}),
+     ...(patch.metadataGeneration?.providers !== undefined
+       ? { metadataGeneration: { providers: patch.metadataGeneration.providers } }
+@@ -279,6 +298,12 @@
+   };
+ }
+ 
++function assertProtectedProviderPatch(patch: SupportedMutableConfigPatch): void {
++  if (patch.removeProviders?.includes("codex") || patch.providers?.codex?.enabled === false) {
++    throw new Error("The Codex provider cannot be disabled or removed");
++  }
++}
++
+ export function applyMutableProviderConfigToOverrides(
+   baseOverrides: Record<string, ProviderOverride> | undefined,
+   mutableProviders: MutableDaemonConfig["providers"] | undefined,
+@@ -289,10 +314,13 @@
+ 
+   const nextOverrides: Record<string, ProviderOverride> = { ...baseOverrides };
+   for (const [providerId, providerConfig] of Object.entries(mutableProviders ?? {})) {
+-    nextOverrides[providerId] = {
+-      ...nextOverrides[providerId],
+-      ...ProviderOverrideSchema.strip().parse(providerConfig),
+-    };
++    const parsedPatch = ProviderOverrideSchema.strip().parse(providerConfig);
++    nextOverrides[providerId] = ProviderOverrideSchema.parse(
++      deepMerge(
++        (nextOverrides[providerId] ?? {}) as Record<string, unknown>,
++        parsedPatch as Record<string, unknown>,
++      ),
++    );
+   }
+ 
+   return nextOverrides;
+@@ -338,6 +366,7 @@
+ 
+   public patch(partial: MutableDaemonConfigPatch): MutableDaemonConfig {
+     const parsedPatch = pickSupportedPatchFields(MutableDaemonConfigPatchSchema.parse(partial));
++    assertProtectedProviderPatch(parsedPatch);
+     return this.applySupportedPatch(parsedPatch);
+   }
+ 
+@@ -380,10 +409,15 @@
+       return this.current;
+     }
+ 
++    // Advance the persisted baseline before notifying live owners. Change
++    // listeners may synchronously issue another patch; assigning after
++    // applyReplacement would overwrite that nested patch's baseline.
++    const previousLastKnownPersisted = this.lastKnownPersisted;
++    this.lastKnownPersisted = knownNext;
+     try {
+       this.applyReplacement(next, { removedProviders });
+-      this.lastKnownPersisted = knownNext;
+     } catch (error) {
++      this.lastKnownPersisted = previousLastKnownPersisted;
+       savePersistedConfig(this.paseoHome, persistedBeforePatch, this.logger);
+       throw error;
+     }
+@@ -436,8 +470,18 @@
+     const removedProviders = Object.keys(this.current.providers).filter(
+       (provider) => !(provider in desired.providers),
+     );
+-    this.applyReplacement(desired, { removedProviders });
++    const previousLastKnownPersisted = this.lastKnownPersisted;
+     this.lastKnownPersisted = persisted;
++    try {
++      this.applyReplacement(desired, { removedProviders });
++    } catch (error) {
++      this.lastKnownPersisted = previousLastKnownPersisted;
++      // A reload is a transaction across the persisted file and every live owner.
++      // If an owner rejects the new state, restore the last successfully applied
++      // file so a later reload cannot repeatedly re-apply the rejected config.
++      savePersistedConfig(this.paseoHome, this.lastKnownPersisted, this.logger);
++      throw error;
++    }
+ 
+     return {
+       appliedPaths: [...appliedPaths].sort(),

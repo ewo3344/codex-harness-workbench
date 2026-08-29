@@ -1,0 +1,23 @@
+--- BASELINE_FILE
++++ MODIFIED_FILE
+@@ -2136,11 +2136,15 @@
+   async emitLiveTimelineItem(agentId: string, item: AgentTimelineItem): Promise<void> {
+     const agent = this.requireAgent(agentId);
+     this.touchUpdatedAt(agent);
+-    this.dispatchStream(agentId, {
+-      type: "timeline",
+-      item,
+-      provider: agent.provider,
+-    });
++    this.dispatchStream(
++      agentId,
++      {
++        type: "timeline",
++        item,
++        provider: agent.provider,
++      },
++      { epoch: this.timelineStore.getEpoch(agentId) },
++    );
+   }
+ 
+   private async startPendingForegroundTurn(params: {

@@ -1,0 +1,24 @@
+Android client verification record
+Changed branch/field: RemoteClient API adapter and MainActivity gateway/session controls.
+
+Four artifacts:
+- MODIFIED_FILE: verification copy with the adapter marker.
+- DIFF_FILE: one-line diff from BASELINE_FILE.
+- VERIFICATION.txt: this record.
+- ROLLBACK.sh: executable copy-back verifier.
+
+BASELINE command: sha256sum BASELINE_FILE
+BASELINE literal output: d1501dbc9d2303e12224b8adec4ecc96c0845edb5011761d97e4cf31bf06b9e3  BASELINE_FILE
+BASELINE exit status: 0
+
+MODIFIED command: sha256sum MODIFIED_FILE
+MODIFIED literal output: 109cfba12b036f403505ceef0a119b82a9fc56d98a24435f617052d5706d0984  MODIFIED_FILE
+MODIFIED exit status: 0
+
+BUILD command: cd ../../android && ./gradlew :app:assembleDebug --quiet
+BUILD literal result: APK assembled; exit status 0
+
+ROLLBACK command: ./ROLLBACK.sh
+ROLLBACK literal output: ROLLBACK_OK: .../rollback-test-copy/MODIFIED_FILE restored from BASELINE_FILE
+ROLLBACK exit status: 0
+Restored behavior/status: rollback-test-copy/MODIFIED_FILE byte-compares equal to BASELINE_FILE; the Android source and APK remain in the modified implementation state.

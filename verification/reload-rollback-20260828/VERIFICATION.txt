@@ -1,0 +1,98 @@
+Reload rollback verification
+============================
+
+Changed branch/field
+--------------------
+`DaemonConfigStore.reload()` failure branch now restores the last successfully
+applied persisted snapshot after a live owner rejects `daemon.browserTools.enabled`.
+The live owner and in-memory field were already rolled back by `applyReplacement()`;
+the changed branch restores `config.json` and keeps `lastKnownPersisted` unchanged.
+
+Artifacts
+---------
+- MODIFIED_FILE: `/home/e/workspace/codex-remote-workbench/verification/reload-rollback-20260828/MODIFIED_FILE`
+- DIFF_FILE: `/home/e/workspace/codex-remote-workbench/verification/reload-rollback-20260828/DIFF_FILE`
+- VERIFICATION.txt: `/home/e/workspace/codex-remote-workbench/verification/reload-rollback-20260828/VERIFICATION.txt`
+- ROLLBACK.sh: `/home/e/workspace/codex-remote-workbench/verification/reload-rollback-20260828/ROLLBACK.sh`
+
+Additional fixture files are `BASELINE_FILE`, `reload-rollback-check.mjs`, and
+`rollback-copy/MODIFIED_FILE` in the same directory.
+
+Hashes
+------
+- BASELINE_FILE: `f44bb1ab7bcd3ca69859a94753a769e3ab29572a096a91a1c664530cc23cafc0`
+- MODIFIED_FILE: `2d3f7bfda2b6e74da7ac4f6e346fe80367f3cd428b716fed35a87880f0360d14`
+- rollback-copy/MODIFIED_FILE after rollback: `f44bb1ab7bcd3ca69859a94753a769e3ab29572a096a91a1c664530cc23cafc0`
+
+BASELINE test
+-------------
+Command (cwd: `/home/e/workspace/codex-remote-workbench/verification/relay-reconnect-20260827/baseline-paseo`):
+`NODE_NO_WARNINGS=1 ./node_modules/.bin/vitest run packages/server/src/server/daemon-config-store.test.ts --maxWorkers=1`
+
+Literal output:
+```text
+
+ RUN  v4.1.7 /home/e/workspace/codex-remote-workbench/verification/relay-reconnect-20260827/baseline-paseo
+
+
+ Test Files  1 passed (1)
+      Tests  33 passed (33)
+   Start at  09:11:33
+   Duration  428ms (transform 187ms, setup 0ms, import 320ms, tests 31ms, environment 0ms)
+```
+
+Result: exit status `0`.
+
+BASELINE behavior check (the pre-change behavior intentionally leaves the rejected
+disk edit in place):
+`NODE_NO_WARNINGS=1 node --import tsx /home/e/workspace/codex-remote-workbench/verification/reload-rollback-20260828/reload-rollback-check.mjs packages/server/src/server/daemon-config-store.ts left-new`
+
+Input: one owner sets `browserTools.enabled=true`, a later owner throws
+`Provider refresh failed during reload`, and the check expects the baseline disk result.
+Literal output: `ROLLBACK_CHECK live=false memory=false persisted=true result=PASS`
+Result: exit status `0`.
+
+MODIFIED test
+-------------
+Command (cwd: `/home/e/workspace/codex-remote-workbench/upstream/paseo`):
+`NODE_NO_WARNINGS=1 ./node_modules/.bin/vitest run packages/server/src/server/daemon-config-store.test.ts --maxWorkers=1`
+
+Literal output:
+```text
+
+ RUN  v4.1.7 /home/e/workspace/codex-remote-workbench/upstream/paseo
+
+
+ Test Files  1 passed (1)
+      Tests  36 passed (36)
+   Start at  09:11:33
+   Duration  437ms (transform 184ms, setup 0ms, import 324ms, tests 33ms, environment 0ms)
+```
+
+Result: exit status `0`.
+
+MODIFIED behavior check:
+`NODE_NO_WARNINGS=1 node --import tsx /home/e/workspace/codex-remote-workbench/verification/reload-rollback-20260828/reload-rollback-check.mjs packages/server/src/server/daemon-config-store.ts restored`
+
+Input: the same owner sequence and rejected `daemon.browserTools.enabled` edit.
+Literal output: `ROLLBACK_CHECK live=false memory=false persisted=false result=PASS`
+Result: exit status `0`.
+
+ROLLBACK test
+-------------
+Command (cwd: `/home/e/workspace/codex-remote-workbench`):
+`verification/reload-rollback-20260828/ROLLBACK.sh`
+
+Input: copy `MODIFIED_FILE` to `rollback-copy/MODIFIED_FILE`, apply the reverse of
+`DIFF_FILE`, and compare the result to `BASELINE_FILE`.
+Literal output:
+`ROLLBACK_TEST copy=/home/e/workspace/codex-remote-workbench/verification/reload-rollback-20260828/rollback-copy/MODIFIED_FILE result=PASS restored_hash=f44bb1ab7bcd3ca69859a94753a769e3ab29572a096a91a1c664530cc23cafc0`
+Result: exit status `0`; rollback copy restored, while `MODIFIED_FILE` remains changed.
+
+Restored behavior/status
+------------------------
+After a failed reload, live owner state is `false`, in-memory
+`browserTools.enabled` is `false`, and persisted `config.json` is `false` in the
+modified implementation. The baseline leaves persisted state `true`. The rollback
+copy matches the original baseline hash exactly; the modified artifact remains at
+its distinct modified hash.

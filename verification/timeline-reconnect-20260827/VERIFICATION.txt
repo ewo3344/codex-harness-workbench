@@ -1,0 +1,74 @@
+Timeline reconnect epoch verification record
+Date: 2026-08-27
+
+Changed branch/field: `AgentManager.emitLiveTimelineItem()` now supplies the
+current timeline `epoch` when it dispatches a provisional live `timeline`
+event. The event intentionally still has no `seq`, so it cannot be mistaken
+for a committed replay row.
+
+Four artifacts:
+- MODIFIED_FILE: /home/e/workspace/codex-remote-workbench/verification/timeline-reconnect-20260827/MODIFIED_FILE
+- DIFF_FILE: /home/e/workspace/codex-remote-workbench/verification/timeline-reconnect-20260827/DIFF_FILE
+- VERIFICATION.txt: /home/e/workspace/codex-remote-workbench/verification/timeline-reconnect-20260827/VERIFICATION.txt
+- ROLLBACK.sh: /home/e/workspace/codex-remote-workbench/verification/timeline-reconnect-20260827/ROLLBACK.sh
+
+BASELINE hash command: sha256sum BASELINE_FILE
+BASELINE hash input: source copy with the `emitLiveTimelineItem` epoch branch removed
+BASELINE hash literal output: f0846ffac67fda4d7b6c175a5227e09cf3dc052afffde09544832e2ef7fbdbab  BASELINE_FILE
+BASELINE hash exit status: 0
+
+BASELINE test command: npx vitest run packages/server/src/server/daemon-e2e/timeline-reconnect-contract.e2e.test.ts --bail=1
+BASELINE test working directory: /home/e/workspace/codex-remote-workbench/upstream/paseo
+BASELINE test input: working source temporarily replaced with the epoch-free baseline branch
+BASELINE test literal output:
+Test Files  1 failed (1)
+Tests  1 failed (2)
+Error: Timed out after 5000ms waiting for condition
+packages/server/src/server/daemon-e2e/timeline-reconnect-contract.e2e.test.ts:92:5
+BASELINE test result: provisional event never supplied the required epoch; exit status 1
+
+MODIFIED hash command: sha256sum MODIFIED_FILE
+MODIFIED hash input: source copy with the dispatch epoch branch present
+MODIFIED hash literal output: 2e0ad50cb67bcbc02f3ef051f4bd2eca0c5a6a94bb424329e0467f8ed86dd679  MODIFIED_FILE
+MODIFIED hash exit status: 0
+
+MODIFIED test command: npx vitest run packages/server/src/server/daemon-e2e/timeline-reconnect-contract.e2e.test.ts packages/server/src/server/agent/agent-manager-stream-coalescing.test.ts packages/server/src/server/agent/providers/codex-app-server-agent.test.ts --bail=1 --maxWorkers=1
+MODIFIED test working directory: /home/e/workspace/codex-remote-workbench/upstream/paseo
+MODIFIED test input: live timeline epoch/no-seq contract, coalescing behavior, and Codex app-server provider behavior
+MODIFIED test literal output:
+Test Files  3 passed (3)
+Tests  175 passed (175)
+MODIFIED test result: exit status 0
+
+TYPECHECK command: npm run typecheck --workspace=@getpaseo/server
+TYPECHECK input: Paseo server TypeScript project
+TYPECHECK literal output: npm notice run tsgo -p tsconfig.server.typecheck.json --noEmit
+TYPECHECK result: exit status 0
+
+LINT command: npm run lint -- packages/server/src/server/agent/agent-manager.ts packages/server/src/server/agent/agent-manager-stream-coalescing.test.ts
+LINT input: modified implementation and regression test
+LINT literal output: Found 0 warnings and 0 errors.
+LINT result: exit status 0
+
+DIFF CHECK command: git diff --check
+DIFF CHECK input: Paseo working tree
+DIFF CHECK literal output: no output
+DIFF CHECK result: exit status 0
+
+RELAY command: ./scripts/verify-relay.sh
+RELAY input: isolated local relay crypto and daemon pairing-offer E2E suites
+RELAY literal output:
+Test Files  1 passed (1)
+Tests  3 passed (3)
+Test Files  1 passed (1)
+Tests  1 passed (1)
+RELAY result: exit status 0
+
+ROLLBACK command: ./ROLLBACK.sh
+ROLLBACK input: default rollback-test-copy/MODIFIED_FILE target
+ROLLBACK literal output: ROLLBACK_OK: /home/e/workspace/codex-remote-workbench/verification/timeline-reconnect-20260827/rollback-test-copy/MODIFIED_FILE restored from BASELINE_FILE
+ROLLBACK result: exit status 0; rollback-test-copy/MODIFIED_FILE byte-compares equal to BASELINE_FILE
+
+Restored behavior/status: the independent rollback copy contains the epoch-free
+baseline source. The live source byte-compares equal to MODIFIED_FILE, which
+remains changed at SHA-256 2e0ad50cb67bcbc02f3ef051f4bd2eca0c5a6a94bb424329e0467f8ed86dd679.

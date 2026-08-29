@@ -1,0 +1,65 @@
+Relay terminal transport regression verification
+Date: 2026-08-27
+
+Changed branch/field:
+- upstream/paseo/packages/server/src/server/daemon-e2e/relay-transport.e2e.test.ts
+- E2EE relay client creates, streams, resizes, and terminates a terminal
+- initial terminal snapshot before terminal input
+
+Artifacts:
+- /home/e/workspace/codex-remote-workbench/verification/relay-terminal-20260827/MODIFIED_FILE.ts
+- /home/e/workspace/codex-remote-workbench/verification/relay-terminal-20260827/DIFF_FILE.patch
+- /home/e/workspace/codex-remote-workbench/verification/relay-terminal-20260827/VERIFICATION.txt
+- /home/e/workspace/codex-remote-workbench/verification/relay-terminal-20260827/ROLLBACK.sh
+
+Baseline source hash:
+b99d2647fd7bdfbd29f361a688840ceb06e5e0d65c3ae129022b878b3ccb0138  BASELINE_FILE.ts
+
+Modified source hash:
+ae5d7c5401d64b977b0429c066253fc7ba9679eee253cbd93d506c185a04ee4a  MODIFIED_FILE.ts
+
+BASELINE
+Command:
+cd /home/e/workspace/codex-remote-workbench/upstream/paseo && FORCE_RELAY_E2E=1 npx vitest run packages/server/src/server/daemon-e2e/relay-transport.e2e.test.ts --maxWorkers=1
+Input: reconnect regression file before the terminal case
+Literal result:
+Test Files  1 passed (1)
+Tests  5 passed (5)
+Exit status: 0
+
+MODIFIED
+Command:
+cd /home/e/workspace/codex-remote-workbench && ./scripts/verify-relay.sh
+Input: temporary local Wrangler relay, isolated daemon home/workdir, pairing offer, E2EE DaemonClient reconnect and terminal stream cases
+Literal result:
+Relay crypto: Tests  3 passed (3)
+Pairing offer: Tests  1 passed (1)
+Reconnect filter: Tests  1 passed | 5 skipped (6)
+Terminal filter: Tests  1 passed | 5 skipped (6)
+Exit status: 0
+
+Command:
+cd /home/e/workspace/codex-remote-workbench/upstream/paseo && FORCE_RELAY_E2E=1 npx vitest run packages/server/src/server/daemon-e2e/relay-transport.e2e.test.ts --maxWorkers=1
+Input: full modified relay transport file
+Literal result:
+Test Files  1 passed (1)
+Tests  6 passed (6)
+Exit status: 0
+
+ROLLBACK
+Command:
+cd /home/e/workspace/codex-remote-workbench && ./verification/relay-terminal-20260827/ROLLBACK.sh verification/relay-terminal-20260827/rollback-copy/relay-transport.e2e.test.ts
+Input: isolated copy of MODIFIED_FILE.ts
+Literal result: no stdout/stderr
+Exit status: 0
+
+Command:
+cd /home/e/workspace/codex-remote-workbench && cmp -s verification/relay-terminal-20260827/BASELINE_FILE.ts verification/relay-terminal-20260827/rollback-copy/relay-transport.e2e.test.ts
+Input: rollback output compared with the preserved baseline
+Literal result: files are byte-identical
+Exit status: 0
+
+Restored behavior/status:
+- The isolated rollback copy has the original hash b99d2647fd7bdfbd29f361a688840ceb06e5e0d65c3ae129022b878b3ccb0138.
+- The workspace source remains modified and has the hash ae5d7c5401d64b977b0429c066253fc7ba9679eee253cbd93d506c185a04ee4a.
+- The added terminal case waits for the initial snapshot, then verifies E2EE input/output, resize, and terminal termination.

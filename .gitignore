@@ -1,0 +1,46 @@
+# Rust build output
+/target/
+**/target/
+
+# JavaScript dependencies and build output
+/node_modules/
+**/node_modules/
+/dist/
+**/dist/
+/build/
+**/build/
+/.next/
+**/.next/
+/coverage/
+**/coverage/
+
+# Android/Gradle generated state
+/android/.gradle/
+/android/**/build/
+/android/app-debug-screen.png
+/host/codex-remote-host
+
+# Local runtime state and environment files
+/.paseo-dev/
+/.dev/
+**/.dev/
+/.wrangler/
+**/.wrangler/
+.env
+.env.*
+*.pid
+
+# Logs and debug output
+*.log
+*.trace
+
+# Credentials, signing material, and packaged binaries
+*.apk
+*.aab
+*.keystore
+*.jks
+*.p12
+*.pem
+
+# Disposable full-tree copies used by local verification harnesses
+/verification/**/baseline-paseo/

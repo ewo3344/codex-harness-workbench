@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "agents": {
+    "providers": {
+      "codex": {
+        "enabled": true
+      },
+      "my-openai": {
+        "extends": "codex",
+        "enabled": true,
+        "label": "Custom OpenAI API",
+        "description": "OpenAI-compatible endpoint",
+        "env": {
+          "OPENAI_API_KEY": "sk-...",
+          "OPENAI_BASE_URL": "https://api.openai.com"
+        },
+        "models": [
+          {
+            "id": "gpt-4-turbo",
+            "label": "GPT-4 Turbo",
+            "isDefault": true
+          },
+          {
+            "id": "gpt-4o",
+            "label": "GPT-4o"
+          }
+        ]
+      },
+      "my-claude": {
+        "extends": "claude",
+        "enabled": true,
+        "label": "Custom Claude API",
+        "description": "Anthropic-compatible endpoint or proxy",
+        "env": {
+          "ANTHROPIC_API_KEY": "sk-ant-...",
+          "ANTHROPIC_BASE_URL": "https://api.anthropic.com"
+        },
+        "disallowedTools": ["WebSearch"],
+        "models": [
+          {
+            "id": "claude-opus-4-7",
+            "label": "Claude Opus 4.7",
+            "isDefault": true
+          },
+          {
+            "id": "claude-sonnet-4-6",
+            "label": "Claude Sonnet 4.6"
+          }
+        ]
+      },
+      "ollama-local": {
+        "extends": "acp",
+        "enabled": false,
+        "label": "Local Ollama",
+        "description": "Run models locally with Ollama",
+        "command": ["ollama-acp-wrapper"],
+        "models": [
+          {
+            "id": "qwen2.5-coder:32b",
+            "label": "Qwen2.5 Coder 32B"
+          },
+          {
+            "id": "deepseek-coder-v2",
+            "label": "DeepSeek Coder V2"
+          }
+        ]
+      }
+    }
+  }
+}

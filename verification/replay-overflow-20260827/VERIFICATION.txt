@@ -1,0 +1,73 @@
+Replay overflow regression verification
+Date: 2026-08-27
+
+Changed branch/field:
+- crates/codex-bridge/tests/concurrent_transport.rs
+- default_replay_buffer_requires_reset_after_2048_events
+- ConcurrentAppServer default MessageBus replay window (2048 events)
+
+Artifacts:
+- /home/e/workspace/codex-remote-workbench/verification/replay-overflow-20260827/MODIFIED_FILE.rs
+- /home/e/workspace/codex-remote-workbench/verification/replay-overflow-20260827/DIFF_FILE.patch
+- /home/e/workspace/codex-remote-workbench/verification/replay-overflow-20260827/VERIFICATION.txt
+- /home/e/workspace/codex-remote-workbench/verification/replay-overflow-20260827/ROLLBACK.sh
+
+Baseline source hash:
+8bc91868b16818efb57d2d47a15059126b6197e7580f001e9a2b8f3be9e7e50d  BASELINE_FILE.rs
+
+Modified source hash:
+33b2dde94a05dbe178567de8543661aadd8b77619f4c2090ea3cafb4a576953a  MODIFIED_FILE.rs
+
+BASELINE
+Command:
+cd /home/e/workspace/codex-remote-workbench && cargo test -p codex-bridge --test concurrent_transport
+Input: original concurrent_transport.rs (one interleaved request/response transport test)
+Literal result:
+running 1 test
+test routes_out_of_order_responses_and_replays_interleaved_server_messages ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+Exit status: 0
+
+MODIFIED
+Command:
+cd /home/e/workspace/codex-remote-workbench && cargo test -p codex-bridge --test concurrent_transport
+Input: default transport plus a fake JSONL app-server that emits 2049 turn/updated notifications before its response
+Literal result:
+running 2 tests
+test routes_out_of_order_responses_and_replays_interleaved_server_messages ... ok
+test default_replay_buffer_requires_reset_after_2048_events ... ok
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+Exit status: 0
+
+Additional modified validation
+Command:
+cd /home/e/workspace/codex-remote-workbench && cargo test -p codex-bridge
+Input: complete codex-bridge suite
+Literal result:
+5 unit tests passed; concurrent_transport 2 passed; 5 real-account/model integration tests ignored; no failures.
+Exit status: 0
+
+Command:
+cd /home/e/workspace/codex-remote-workbench && ./scripts/verify-rust.sh
+Input: formatting gate, locked workspace suite, and omp-walker feature suite
+Literal result:
+codex_bridge: 5 unit tests passed; concurrent_transport: 2 passed; omp_primitives default: 1 passed; omp_primitives omp-walker: 1 passed; no failures.
+Exit status: 0
+
+ROLLBACK
+Command:
+cd /home/e/workspace/codex-remote-workbench && ./verification/replay-overflow-20260827/ROLLBACK.sh verification/replay-overflow-20260827/rollback-copy/concurrent_transport.rs
+Input: isolated copy of MODIFIED_FILE.rs
+Literal result: no stdout/stderr
+Exit status: 0
+
+Command:
+cd /home/e/workspace/codex-remote-workbench && cmp -s verification/replay-overflow-20260827/BASELINE_FILE.rs verification/replay-overflow-20260827/rollback-copy/concurrent_transport.rs
+Input: rollback output compared with the preserved baseline
+Literal result: files are byte-identical
+Exit status: 0
+
+Restored behavior/status:
+- The isolated rollback copy has the original hash 8bc91868b16818efb57d2d47a15059126b6197e7580f001e9a2b8f3be9e7e50d.
+- The workspace source remains modified and has the hash 33b2dde94a05dbe178567de8543661aadd8b77619f4c2090ea3cafb4a576953a.
+- The added test verifies a stale cursor gets reset_required after 2049 events, while cursor 1 remains at the retained-window boundary without a reset.

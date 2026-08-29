@@ -1,0 +1,129 @@
+--- BASELINE_FILE.ts
++++ MODIFIED_FILE.ts
+@@ -1037,4 +1037,126 @@
+       await stopRelay();
+     }
+   }, 90000);
++
++  test("E2EE relay client creates, streams, resizes, and terminates a terminal", async () => {
++    process.env.PASEO_PRIMARY_LAN_IP = "192.168.1.12";
++
++    const { logger, lines } = createCapturingLogger();
++    await startRelay({ useLocalRelay: true });
++
++    const daemon = await createTestPaseoDaemon({
++      listen: "127.0.0.1",
++      logger,
++      relayEnabled: true,
++      relayEndpoint: `127.0.0.1:${relayPort}`,
++    });
++
++    let client: DaemonClient | null = null;
++    let unsubscribeOutput: (() => void) | null = null;
++    let unsubscribeExit: (() => void) | null = null;
++
++    try {
++      const offerUrl = await getPairingOfferUrl({
++        paseoHome: daemon.paseoHome,
++        relayEnabled: daemon.config.relayEnabled,
++        relayEndpoint: daemon.config.relayEndpoint,
++        relayPublicEndpoint: daemon.config.relayPublicEndpoint,
++        appBaseUrl: daemon.config.appBaseUrl,
++      });
++      const { serverId, daemonPublicKeyB64 } = decodeOfferFromFragmentUrl(offerUrl);
++      const relayUrl = buildRelayWebSocketUrl({
++        endpoint: `127.0.0.1:${relayPort}`,
++        useTls: false,
++        serverId,
++        role: "client",
++      });
++
++      client = new DaemonClient({
++        url: relayUrl,
++        clientId: `cid_relay_terminal_${Date.now().toString(36)}`,
++        clientType: "cli",
++        connectTimeoutMs: 20_000,
++        e2ee: { enabled: true, daemonPublicKeyB64 },
++        reconnect: { enabled: false },
++        webSocketFactory: (target, options) =>
++          new WebSocket(target, options?.protocols, {
++            headers: options?.headers,
++          }) as unknown as WebSocketLike,
++      });
++
++      await client.connect();
++      const opened = await client.openProject(daemon.staticDir);
++      if (!opened.workspace) {
++        throw new Error(opened.error ?? "Expected a relay workspace");
++      }
++      const created = await client.createTerminal(daemon.staticDir, "relay-terminal", undefined, {
++        command: process.execPath,
++        args: [
++          "-e",
++          "process.stdin.setEncoding('utf8'); process.stdin.on('data', (chunk) => process.stdout.write('relay-output:' + chunk)); setInterval(() => {}, 1000);",
++        ],
++        workspaceId: opened.workspace.id,
++      });
++      if (created.error || !created.terminal) {
++        throw new Error(created.error ?? "Expected a relay terminal");
++      }
++      const terminalId = created.terminal.id;
++
++      const output: string[] = [];
++      let initialSnapshotReceived = false;
++      let terminalExited = false;
++      unsubscribeOutput = client.onTerminalStreamEvent((event) => {
++        if (event.terminalId !== terminalId) {
++          return;
++        }
++        if (event.type === "snapshot") {
++          initialSnapshotReceived = true;
++          return;
++        }
++        if (event.type === "output") {
++          output.push(new TextDecoder().decode(event.data));
++        }
++      });
++      unsubscribeExit = client.on("terminal_stream_exit", (message) => {
++        if (message.payload.terminalId === terminalId) {
++          terminalExited = true;
++        }
++      });
++
++      const subscribed = await client.subscribeTerminal(terminalId);
++      expect(subscribed.error).toBeNull();
++      await waitForCondition(() => initialSnapshotReceived);
++      client.sendTerminalInput(terminalId, {
++        type: "input",
++        data: "relay-input\r",
++      });
++      await waitForCondition(() => output.join("").includes("relay-output:relay-input"));
++
++      client.sendTerminalInput(terminalId, {
++        type: "resize",
++        rows: 13,
++        cols: 51,
++      });
++      await waitForCondition(() => {
++        const state = daemon.daemon.terminalManager?.getTerminal(terminalId)?.getState();
++        return state?.rows === 13 && state.cols === 51;
++      });
++
++      const killed = await client.killTerminal(terminalId);
++      expect(killed.success).toBe(true);
++      await waitForCondition(() => terminalExited, 10_000);
++    } catch (err) {
++      const tail = lines.slice(-50).join("");
++      // Only prints on failure to help diagnose encrypted terminal transport.
++      // eslint-disable-next-line no-console
++      console.error("daemon logs (tail):\\n", tail);
++      throw err;
++    } finally {
++      unsubscribeOutput?.();
++      unsubscribeExit?.();
++      await client?.close();
++      await daemon.close();
++      await stopRelay();
++    }
++  }, 90000);
+ });

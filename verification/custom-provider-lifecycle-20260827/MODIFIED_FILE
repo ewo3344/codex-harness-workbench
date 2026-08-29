@@ -1,0 +1,5 @@
+provider_lifecycle=browser-e2e-openai-and-manual-all-kinds
+daemon_reload=verified
+codex_protection=verified
+provider_secret_leak=0
+mobile_horizontal_overflow=false

@@ -1,0 +1,10 @@
+# Codex CLI and relay modified fixture
+workspace_launch_default=first-codex-command-profile
+codex_terminal_profile_name=Codex CLI
+codex_terminal_profile_command=codex
+codex_terminal_profile_args=--no-alt-screen {{{prompt}}}
+codex_terminal_profile_transcript=host-terminal-scrollback
+relay_local_e2e_upstream=local-durable-object
+relay_validation_document=docs/RELAY_VALIDATION.md
+quickstart_node_recommendation=v22+
+relay_wrapper_node_minimum=v22+

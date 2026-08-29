@@ -1,0 +1,3 @@
+default_page=terminal-codex-cli
+remote_control=disabled
+session_transport=none

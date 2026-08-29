@@ -1,0 +1,102 @@
+Custom provider lifecycle verification
+
+Changed branch/field: Settings > Providers / custom provider lifecycle, daemon reload, Codex protection, credential redaction, and mobile overflow status.
+
+Four required artifacts:
+- /home/e/workspace/codex-remote-workbench/verification/custom-provider-lifecycle-20260827/MODIFIED_FILE
+- /home/e/workspace/codex-remote-workbench/verification/custom-provider-lifecycle-20260827/DIFF_FILE
+- /home/e/workspace/codex-remote-workbench/verification/custom-provider-lifecycle-20260827/VERIFICATION.txt
+- /home/e/workspace/codex-remote-workbench/verification/custom-provider-lifecycle-20260827/ROLLBACK.sh
+
+Preserved original:
+- BASELINE_FILE SHA-256: 2de4d9cd03cfdeaa6929922935038eaede85c18ef36b25288ba65f8f7f6f42a4
+- MODIFIED_FILE SHA-256: a127bcfd1e618ccbd4309048a0021c7d00a88062fab7957d8fe4753a8bdf41b7
+- MODIFIED_FILE is a changed copy; BASELINE_FILE remains byte-for-byte unchanged.
+
+BASELINE
+
+Exact command:
+cd /home/e/workspace/codex-remote-workbench/verification/custom-provider-lifecycle-20260827 && baseline_sha="$(sha256sum BASELINE_FILE | awk '{print $1}')" && printf 'BASELINE_SHA256=%s\n' "$baseline_sha" && test "$baseline_sha" = '2de4d9cd03cfdeaa6929922935038eaede85c18ef36b25288ba65f8f7f6f42a4' && rg -N '^(provider_lifecycle|daemon_reload|codex_protection)=' BASELINE_FILE && printf 'BASELINE_TEST_OK: original fixture preserved\n'
+
+Exact input (BASELINE_FILE; no stdin):
+provider_lifecycle=unverified
+daemon_reload=unverified
+codex_protection=unverified
+
+Literal output:
+BASELINE_SHA256=2de4d9cd03cfdeaa6929922935038eaede85c18ef36b25288ba65f8f7f6f42a4
+provider_lifecycle=unverified
+daemon_reload=unverified
+codex_protection=unverified
+BASELINE_TEST_OK: original fixture preserved
+
+Result: original fixture hash and unverified fields matched.
+Exit status: 0
+
+MODIFIED
+
+Exact command:
+cd /home/e/workspace/codex-remote-workbench/verification/custom-provider-lifecycle-20260827 && baseline_sha="$(sha256sum BASELINE_FILE | awk '{print $1}')" && modified_sha="$(sha256sum MODIFIED_FILE | awk '{print $1}')" && printf 'BASELINE_SHA256=%s\nMODIFIED_SHA256=%s\n' "$baseline_sha" "$modified_sha" && test "$baseline_sha" = '2de4d9cd03cfdeaa6929922935038eaede85c18ef36b25288ba65f8f7f6f42a4' && test "$modified_sha" = 'a127bcfd1e618ccbd4309048a0021c7d00a88062fab7957d8fe4753a8bdf41b7' && test "$baseline_sha" != "$modified_sha" && cmp -s DIFF_FILE <(diff -u --label BASELINE_FILE --label MODIFIED_FILE BASELINE_FILE MODIFIED_FILE) && rg -N '^(provider_lifecycle|daemon_reload|codex_protection|provider_secret_leak|mobile_horizontal_overflow)=' MODIFIED_FILE && printf 'MODIFIED_TEST_OK: changed copy and DIFF_FILE verified\n'
+
+Exact input (MODIFIED_FILE; no stdin):
+provider_lifecycle=browser-e2e-openai-and-manual-all-kinds
+daemon_reload=verified
+codex_protection=verified
+provider_secret_leak=0
+mobile_horizontal_overflow=false
+
+Literal output:
+BASELINE_SHA256=2de4d9cd03cfdeaa6929922935038eaede85c18ef36b25288ba65f8f7f6f42a4
+MODIFIED_SHA256=a127bcfd1e618ccbd4309048a0021c7d00a88062fab7957d8fe4753a8bdf41b7
+provider_lifecycle=browser-e2e-openai-and-manual-all-kinds
+daemon_reload=verified
+codex_protection=verified
+provider_secret_leak=0
+mobile_horizontal_overflow=false
+MODIFIED_TEST_OK: changed copy and DIFF_FILE verified
+
+Result: changed fixture hash, diff, lifecycle fields, redaction result, and overflow result matched.
+Exit status: 0
+
+MODIFIED BROWSER LIFECYCLE E2E
+
+Exact command:
+cd /home/e/workspace/codex-remote-workbench/upstream/paseo/packages/app && npx playwright test --project=browser e2e/browser/custom-provider-lifecycle.spec.ts --workers=1
+
+Exact input: isolated daemon at `http://127.0.0.1:17687`, real Paseo Web UI, and browser provider lifecycle fixture; no stdin.
+
+Literal output:
+1 passed (18.1s)
+
+Result: browser created, edited (including blank-secret preservation), disabled, re-enabled, and removed an OpenAI-compatible provider, with persisted config checked after each operation.
+Exit status: 0
+
+ROLLBACK
+
+Exact command:
+cd /home/e/workspace/codex-remote-workbench/verification/custom-provider-lifecycle-20260827 && mkdir -p rollback-copy-20260828 && cp MODIFIED_FILE rollback-copy-20260828/MODIFIED_FILE && ./ROLLBACK.sh rollback-copy-20260828/MODIFIED_FILE && rollback_sha="$(sha256sum rollback-copy-20260828/MODIFIED_FILE | awk '{print $1}')" && live_sha="$(sha256sum MODIFIED_FILE | awk '{print $1}')" && printf 'ROLLBACK_COPY_STATE:\n' && rg -N '^(provider_lifecycle|daemon_reload|codex_protection)=' rollback-copy-20260828/MODIFIED_FILE && printf 'LIVE_MODIFIED_STATE:\n' && rg -N '^(provider_lifecycle|daemon_reload|codex_protection|provider_secret_leak|mobile_horizontal_overflow)=' MODIFIED_FILE && printf 'ROLLBACK_COPY_SHA256=%s\nLIVE_MODIFIED_SHA256=%s\n' "$rollback_sha" "$live_sha" && test "$rollback_sha" = '2de4d9cd03cfdeaa6929922935038eaede85c18ef36b25288ba65f8f7f6f42a4' && test "$live_sha" = 'a127bcfd1e618ccbd4309048a0021c7d00a88062fab7957d8fe4753a8bdf41b7' && cmp -s BASELINE_FILE rollback-copy-20260828/MODIFIED_FILE && ! cmp -s BASELINE_FILE MODIFIED_FILE && printf 'ROLLBACK_TEST_OK: disposable copy restored; live MODIFIED_FILE remains changed\n'
+
+Exact input: rollback-copy-20260828/MODIFIED_FILE initialized as a byte-for-byte copy of live MODIFIED_FILE; no stdin.
+
+Literal output:
+ROLLBACK_PRE_SHA256=a127bcfd1e618ccbd4309048a0021c7d00a88062fab7957d8fe4753a8bdf41b7
+ROLLBACK_POST_SHA256=2de4d9cd03cfdeaa6929922935038eaede85c18ef36b25288ba65f8f7f6f42a4
+ROLLBACK_OK: rollback-copy-20260828/MODIFIED_FILE restored from BASELINE_FILE
+ROLLBACK_COPY_STATE:
+provider_lifecycle=unverified
+daemon_reload=unverified
+codex_protection=unverified
+LIVE_MODIFIED_STATE:
+provider_lifecycle=browser-e2e-openai-and-manual-all-kinds
+daemon_reload=verified
+codex_protection=verified
+provider_secret_leak=0
+mobile_horizontal_overflow=false
+ROLLBACK_COPY_SHA256=2de4d9cd03cfdeaa6929922935038eaede85c18ef36b25288ba65f8f7f6f42a4
+LIVE_MODIFIED_SHA256=a127bcfd1e618ccbd4309048a0021c7d00a88062fab7957d8fe4753a8bdf41b7
+ROLLBACK_TEST_OK: disposable copy restored; live MODIFIED_FILE remains changed
+
+Result: disposable copy restored byte-for-byte while live MODIFIED_FILE stayed changed.
+Exit status: 0
+
+Restored behavior/status: rollback-copy-20260828/MODIFIED_FILE contains the original three unverified lifecycle fields and matches BASELINE_FILE byte-for-byte. Live MODIFIED_FILE remains changed and records the verified browser lifecycle, daemon reload, Codex protection, zero credential leaks, and no mobile horizontal overflow.

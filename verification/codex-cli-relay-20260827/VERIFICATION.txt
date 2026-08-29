@@ -1,0 +1,66 @@
+Codex CLI default and relay verification record
+Date: 2026-08-27
+
+Changed branch/field: new-workspace default branch; default Codex terminal
+profile arguments; local relay E2E upstream override.
+
+Four artifacts:
+- MODIFIED_FILE: /home/e/workspace/codex-remote-workbench/verification/codex-cli-relay-20260827/MODIFIED_FILE
+- DIFF_FILE: /home/e/workspace/codex-remote-workbench/verification/codex-cli-relay-20260827/DIFF_FILE
+- VERIFICATION.txt: /home/e/workspace/codex-remote-workbench/verification/codex-cli-relay-20260827/VERIFICATION.txt
+- ROLLBACK.sh: /home/e/workspace/codex-remote-workbench/verification/codex-cli-relay-20260827/ROLLBACK.sh
+
+BASELINE hash command: sha256sum BASELINE_FILE
+BASELINE hash input: baseline fixture in this directory
+BASELINE hash literal output: 9329392f100689885cda3c20d3f4a41810ffd1d5dd4ea658d0e3b3f780bc14d5  BASELINE_FILE
+BASELINE hash exit status: 0
+
+BASELINE test command: grep -Fx -e 'workspace_launch_default=chat' -e 'codex_terminal_profile_args={{{prompt}}}' -e 'relay_local_e2e_upstream=production-cutover-proxy' -e 'quickstart_node_recommendation=v18+' BASELINE_FILE
+BASELINE test input: baseline default-launch, terminal, relay, and Node-version fields
+BASELINE test literal output:
+workspace_launch_default=chat
+codex_terminal_profile_args={{{prompt}}}
+relay_local_e2e_upstream=production-cutover-proxy
+quickstart_node_recommendation=v18+
+BASELINE test result: all expected baseline fields found; exit status 0
+
+MODIFIED hash command: sha256sum MODIFIED_FILE
+MODIFIED hash input: modified fixture in this directory
+MODIFIED hash literal output: 307df212ff7375d1078dfee9e1a97d1b1c3b3a8da668546f8a2b99407c45ad82  MODIFIED_FILE
+MODIFIED hash exit status: 0
+
+MODIFIED test command: npx vitest run packages/app/src/new-workspace-launch/target.test.ts packages/app/src/screens/new-workspace-terminal.test.ts packages/protocol/src/terminal-profiles.test.ts packages/app/src/create-agent-preferences/preferences.test.ts --maxWorkers=1
+MODIFIED test working directory: /home/e/workspace/codex-remote-workbench/upstream/paseo
+MODIFIED test input: default Codex launch selection, terminal launch screen, terminal profiles, and persisted launch preferences
+MODIFIED test literal output:
+Test Files  4 passed (4)
+Tests  101 passed (101)
+MODIFIED test result: exit status 0
+
+RELAY command: ./scripts/verify-relay.sh
+RELAY command input: Node v26.7.0 with pinned local Vitest and Wrangler dependencies
+RELAY literal output:
+Running isolated Paseo relay crypto E2E...
+Test Files  1 passed (1)
+Tests  3 passed (3)
+Running isolated Paseo daemon pairing-offer relay E2E...
+Test Files  1 passed (1)
+Tests  1 passed (1)
+RELAY result: exit status 0
+
+TYPECHECK protocol command: npm run typecheck --workspace=@getpaseo/protocol
+TYPECHECK application command: npm run typecheck --workspace=@getpaseo/app
+TYPECHECK working directory: /home/e/workspace/codex-remote-workbench/upstream/paseo
+TYPECHECK input: protocol and application TypeScript workspaces
+TYPECHECK literal result: both commands completed without diagnostics; each exit status 0
+
+ROLLBACK command: ./ROLLBACK.sh
+ROLLBACK input: default rollback-test-copy/MODIFIED_FILE target
+ROLLBACK literal output: ROLLBACK_OK: /home/e/workspace/codex-remote-workbench/verification/codex-cli-relay-20260827/rollback-test-copy/MODIFIED_FILE restored from BASELINE_FILE
+ROLLBACK result: exit status 0
+
+Restored behavior/status: rollback-test-copy/MODIFIED_FILE byte-compares equal to
+BASELINE_FILE. The live MODIFIED_FILE remains changed, has SHA-256
+307df212ff7375d1078dfee9e1a97d1b1c3b3a8da668546f8a2b99407c45ad82, and differs
+from BASELINE_FILE. No relay E2E child process or /tmp/paseo-e2e-* directory
+remained after verification.
