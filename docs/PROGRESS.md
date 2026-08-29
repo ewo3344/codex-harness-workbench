@@ -569,3 +569,34 @@ npm run typecheck --workspace=@getpaseo/app
 结果：Android provider 契约 2/2、格式检查通过；共享 Provider 定向测试 `Test Files 3 passed (3)`、`Tests 23 passed (23)`；app typecheck 退出状态为 0。当前 `adb devices -l` 无设备，Maestro/agent-device/Android emulator 均不可用，故真机表单运行仍待设备恢复。
 
 下一步：设备可用后执行 `PASEO_MAESTRO_SERIAL=<serial> bash packages/app/maestro/test-provider-forms-android.sh`，核验截图、logcat、`provider-after.json` 以及实际 Android Settings 交互。
+
+## 2026-08-29 — G0–G2 保全与版本文档勘误，配置 CAS 单测
+
+完成：
+
+- 在仓库外归档 `upstream/paseo` 工作区（不含可重建的 `node_modules`），再提交子模块剩余源码与测试。Paseo HEAD 为 `84acf5a`，祖先为 `b5f5832`；未向 `getpaseo/paseo` 推送。
+- 父仓库提交记录 gitlink `84acf5a65897a0c8cece2d0bdb323fe73edd03a4` 与 G2 勘误。`git ls-files` 不含 `paseo-dev`；未添加 parent remote。
+- 删除 VERSION_* 文档中虚构的「已发布」v0.5.0 / v0.6.0-alpha.1 记录；`scripts/release.sh` 不再静默改根 `version`，也不再调用缺失 helper；父 CI 只调用 `upstream/paseo/package.json` 中存在的 npm 脚本。
+- Daemon config store 对 stale `expectedRevision` 拒绝写入、对匹配 revision 接受写入；对应 vitest 覆盖 shipped store 与 `paseo-config-file` 路径。
+
+验证：
+
+```bash
+git -C upstream/paseo status --short --untracked-files=all
+git -C upstream/paseo log --oneline -3
+git log --oneline
+git ls-files | grep -c paseo-dev
+git submodule status
+bash -n scripts/release.sh
+grep -rn "已发布\|v0\.6\.0-alpha" docs/VERSION_*.md
+cd upstream/paseo
+npx vitest run packages/server/src/server/daemon-config-store.test.ts packages/server/src/utils/paseo-config-file.test.ts --maxWorkers=1
+adb devices -l
+command -v maestro
+```
+
+结果：Paseo 工作树干净；`84acf5a` / `e9ff317` / `b5f5832`。父仓库 `f0dd191` 记录 gitlink 与勘误，`paseo-dev` 计数为 0。`bash -n scripts/release.sh` 退出 0；VERSION_* 无虚构发布记录；四个缺失 helper 名在 `scripts/` 与 `.github/` 中无引用；`ci.yml` 的 `npm run lint` / `build:server`（及 release.sh 的 `build:daemon-web-ui`）均存在于 `package.json`。vitest 连续两次均为 `Test Files 2 passed (2)`、`Tests 49 passed (49)`。`adb devices -l` 显示 `10AE6J03LC001JL`，但 `maestro` 不在 PATH。
+
+边界：未创建 GitHub fork，未向 Paseo `origin` 推送。Android Maestro 真机 provider 生命周期、QR/手动配对、多设备、完整聊天投递、Wi-Fi/4G 切换、replay overflow 恢复、iOS 配对、hosted TLS relay 仍为待验。未改 `config/paseo.dev.json` 打开 relay。未改 STATUS.md / MASTER_PLAN.md。
+
+下一步：用户提供 fork 地址后再推送 `codex-harness-workbench`；安装 Maestro 后用 `PASEO_MAESTRO_SERIAL=10AE6J03LC001JL bash packages/app/maestro/test-provider-forms-android.sh` 跑真机表单。
