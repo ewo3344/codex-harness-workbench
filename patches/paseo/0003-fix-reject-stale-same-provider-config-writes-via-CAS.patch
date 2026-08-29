@@ -1,0 +1,294 @@
+From f1d5ef1bc46d30d7474d4ce7a41aaa22404831d9 Mon Sep 17 00:00:00 2001
+From: Codex Harness Workbench <codex-harness-workbench@localhost>
+Date: Sat, 29 Aug 2026 15:59:27 +0800
+Subject: [PATCH] fix: reject stale same-provider config writes via CAS
+
+Fold the K1 probe into daemon-config-store tests: keep key-merged
+provider adds and optional revisions, and reject a stale
+expectedRevision instead of silently replacing another client's
+fields. Surface DaemonConfigConflictError on the Settings save path.
+---
+ .../app/src/hooks/use-daemon-config.test.tsx  | 120 ++++++++++++++++++
+ .../screens/settings/providers-section.tsx    |  12 +-
+ .../src/server/daemon-config-store.test.ts    | 115 +++++++++++++++++
+ 3 files changed, 245 insertions(+), 2 deletions(-)
+ create mode 100644 packages/app/src/hooks/use-daemon-config.test.tsx
+
+diff --git a/packages/app/src/hooks/use-daemon-config.test.tsx b/packages/app/src/hooks/use-daemon-config.test.tsx
+new file mode 100644
+index 0000000..69746d0
+--- /dev/null
++++ b/packages/app/src/hooks/use-daemon-config.test.tsx
+@@ -0,0 +1,120 @@
++/**
++ * @vitest-environment jsdom
++ */
++import React, { act } from "react";
++import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
++import { renderHook } from "@testing-library/react";
++import { beforeEach, describe, expect, it, vi } from "vitest";
++import type { MutableDaemonConfig } from "@getpaseo/protocol/messages";
++import { daemonConfigQueryKey, type DaemonConfigSnapshot } from "@/data/daemon-config";
++import { DaemonConfigConflictError, useDaemonConfig } from "./use-daemon-config";
++
++const { patchDaemonConfigMock } = vi.hoisted(() => ({
++  patchDaemonConfigMock: vi.fn(),
++}));
++
++vi.mock("react-i18next", () => ({
++  useTranslation: () => ({ t: (key: string) => key }),
++}));
++
++vi.mock("@/runtime/host-runtime", () => ({
++  useHostRuntimeClient: () => ({
++    patchDaemonConfig: patchDaemonConfigMock,
++    getDaemonConfig: vi.fn(),
++  }),
++  useHostRuntimeIsConnected: () => true,
++}));
++
++vi.mock("@/data/query", () => ({
++  useReplicaQuery: () => ({ data: undefined, isLoading: false }),
++}));
++
++const emptyConfig = {
++  relay: { enabled: false },
++  mcp: { injectIntoAgents: false },
++  browserTools: { enabled: false },
++  providers: {},
++  metadataGeneration: { providers: [] },
++  autoArchiveAfterMerge: false,
++  enableTerminalAgentHooks: false,
++  appendSystemPrompt: "",
++} as unknown as MutableDaemonConfig;
++
++function renderPatchHook(snapshot: DaemonConfigSnapshot | undefined) {
++  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
++  if (snapshot) {
++    queryClient.setQueryData(daemonConfigQueryKey("server-1"), snapshot);
++  }
++  const wrapper = ({ children }: { children: React.ReactNode }) => (
++    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
++  );
++  return renderHook(() => useDaemonConfig("server-1"), { wrapper });
++}
++
++describe("useDaemonConfig patchConfig", () => {
++  beforeEach(() => {
++    patchDaemonConfigMock.mockReset();
++  });
++
++  it("sends the last-read revision with a provider save", async () => {
++    patchDaemonConfigMock.mockResolvedValue({
++      config: emptyConfig,
++      revision: "rev-2",
++    });
++    const { result } = renderPatchHook({ config: emptyConfig, revision: "rev-1" });
++
++    await act(async () => {
++      await result.current.patchConfig({
++        providers: { alpha: { extends: "codex", label: "Alpha", enabled: true } },
++      });
++    });
++
++    expect(patchDaemonConfigMock).toHaveBeenCalledWith(
++      { providers: { alpha: { extends: "codex", label: "Alpha", enabled: true } } },
++      { expectedRevision: "rev-1" },
++    );
++  });
++
++  it("omits expectedRevision when the last read had none", async () => {
++    patchDaemonConfigMock.mockResolvedValue({ config: emptyConfig });
++    const { result } = renderPatchHook({ config: emptyConfig });
++
++    await act(async () => {
++      await result.current.patchConfig({ appendSystemPrompt: "ok" });
++    });
++
++    expect(patchDaemonConfigMock).toHaveBeenCalledWith({ appendSystemPrompt: "ok" }, undefined);
++  });
++
++  it("throws DaemonConfigConflictError without dropping the authoritative snapshot", async () => {
++    const authoritative = {
++      ...emptyConfig,
++      providers: { alpha: { extends: "codex", label: "Alpha renamed by A", enabled: true } },
++    } as unknown as MutableDaemonConfig;
++    patchDaemonConfigMock.mockResolvedValue({
++      config: authoritative,
++      revision: "rev-2",
++      conflict: true,
++    });
++    const { result } = renderPatchHook({ config: emptyConfig, revision: "rev-1" });
++
++    await expect(
++      act(async () => {
++        await result.current.patchConfig({
++          providers: {
++            alpha: { extends: "codex", label: "Alpha", enabled: true, description: "changed by B" },
++          },
++        });
++      }),
++    ).rejects.toSatisfy((error: unknown) => {
++      expect(error).toBeInstanceOf(DaemonConfigConflictError);
++      expect(error).toMatchObject({
++        name: "DaemonConfigConflictError",
++        config: authoritative,
++        revision: "rev-2",
++      });
++      expect((error as Error).message).toMatch(/Reload the latest configuration and retry/);
++      return true;
++    });
++  });
++});
+diff --git a/packages/app/src/screens/settings/providers-section.tsx b/packages/app/src/screens/settings/providers-section.tsx
+index afa3689..4498c12 100644
+--- a/packages/app/src/screens/settings/providers-section.tsx
++++ b/packages/app/src/screens/settings/providers-section.tsx
+@@ -472,8 +472,16 @@ export function ProvidersSection({ serverId }: ProvidersSectionProps) {
+   const handleSaveProvider = useCallback(
+     async (providerId: string, providerConfig: MutableProviderConfig) => {
+       setOperationError(null);
+-      await patchConfig({ providers: { [providerId]: providerConfig } });
+-      refreshInBackground([providerId], t("settings.providers.updateErrorTitle"));
++      try {
++        await patchConfig({ providers: { [providerId]: providerConfig } });
++        refreshInBackground([providerId], t("settings.providers.updateErrorTitle"));
++      } catch (error) {
++        setOperationError({
++          title: t("settings.providers.updateErrorTitle"),
++          message: error instanceof Error ? error.message : String(error),
++        });
++        throw error;
++      }
+     },
+     [patchConfig, refreshInBackground, t],
+   );
+diff --git a/packages/server/src/server/daemon-config-store.test.ts b/packages/server/src/server/daemon-config-store.test.ts
+index 7c5d3c9..f897d67 100644
+--- a/packages/server/src/server/daemon-config-store.test.ts
++++ b/packages/server/src/server/daemon-config-store.test.ts
+@@ -184,6 +184,121 @@ describe("DaemonConfigStore", () => {
+     expect(store.getRevision()).not.toBe(matchingRevision);
+   });
+ 
++  test("concurrent adds of different provider keys keep both when revision is omitted", () => {
++    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
++    tempDirs.push(paseoHome);
++    const store = new DaemonConfigStore(paseoHome, {
++      relay: { enabled: false },
++      mcp: { injectIntoAgents: false },
++      browserTools: { enabled: false },
++      providers: {},
++      metadataGeneration: { providers: [] },
++      autoArchiveAfterMerge: false,
++      enableTerminalAgentHooks: false,
++      appendSystemPrompt: "",
++    });
++
++    store.patch({
++      providers: { alpha: { extends: "codex", label: "Alpha", enabled: true } },
++    });
++    store.patch({
++      providers: { beta: { extends: "codex", label: "Beta", enabled: true } },
++    });
++
++    expect(store.get().providers?.alpha).toMatchObject({ label: "Alpha", enabled: true });
++    expect(store.get().providers?.beta).toMatchObject({ label: "Beta", enabled: true });
++  });
++
++  test("a stale expectedRevision does not replace another client's same-provider field", () => {
++    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
++    tempDirs.push(paseoHome);
++    const store = new DaemonConfigStore(paseoHome, {
++      relay: { enabled: false },
++      mcp: { injectIntoAgents: false },
++      browserTools: { enabled: false },
++      providers: {},
++      metadataGeneration: { providers: [] },
++      autoArchiveAfterMerge: false,
++      enableTerminalAgentHooks: false,
++      appendSystemPrompt: "",
++    });
++
++    store.patch({
++      providers: {
++        alpha: {
++          extends: "codex",
++          label: "Alpha",
++          enabled: true,
++          description: "original",
++        },
++      },
++    });
++    const sharedRevision = store.getRevision();
++
++    store.patch(
++      {
++        providers: {
++          alpha: {
++            extends: "codex",
++            label: "Alpha renamed by A",
++            enabled: true,
++            description: "original",
++          },
++        },
++      },
++      sharedRevision,
++    );
++    const afterFirstWrite = store.getRevision();
++    expect(store.get().providers?.alpha).toMatchObject({
++      label: "Alpha renamed by A",
++      description: "original",
++    });
++
++    expect(() =>
++      store.patch(
++        {
++          providers: {
++            alpha: {
++              extends: "codex",
++              label: "Alpha",
++              enabled: true,
++              description: "changed by B",
++            },
++          },
++        },
++        sharedRevision,
++      ),
++    ).toThrow(DaemonConfigRevisionConflictError);
++
++    expect(store.get().providers?.alpha).toMatchObject({
++      label: "Alpha renamed by A",
++      description: "original",
++    });
++    expect(store.getRevision()).toBe(afterFirstWrite);
++  });
++
++  test("an omitted expectedRevision bypasses the conflict check", () => {
++    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
++    tempDirs.push(paseoHome);
++    const store = new DaemonConfigStore(paseoHome, {
++      relay: { enabled: false },
++      mcp: { injectIntoAgents: false },
++      browserTools: { enabled: false },
++      providers: {},
++      metadataGeneration: { providers: [] },
++      autoArchiveAfterMerge: false,
++      enableTerminalAgentHooks: false,
++      appendSystemPrompt: "",
++    });
++
++    const staleRevision = store.getRevision();
++    store.patch({ appendSystemPrompt: "first" }, staleRevision);
++
++    store.patch({ appendSystemPrompt: "second" });
++
++    expect(store.get().appendSystemPrompt).toBe("second");
++  });
++
+   test("patch round-trips agent profiles through the strictly-parsed persisted config", () => {
+     const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+     tempDirs.push(paseoHome);
+-- 
+2.55.0
+

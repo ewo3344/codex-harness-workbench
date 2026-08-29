@@ -667,6 +667,34 @@ PASEO_MAESTRO_SERIAL=10AE6J03LC001JL bash packages/app/maestro/test-provider-for
 
 结果：token scopes 含 `workflow`；父 `origin` 为 `ewo3344/codex-harness-workbench`；Paseo `origin` 仍为 `getpaseo/paseo`，`fork` 为 `ewo3344/paseo`；当前分支 `codex-harness-workbench` 跟踪 `fork/codex-harness-workbench`。`paseo-dev` 计数 0。Maestro `2.9.0`。真机脚本因 USB 安装权限被拒退出 1。
 
-边界：未向 `https://github.com/getpaseo/paseo.git` 推送。未生成或注册 SSH 密钥，未执行 `gh auth refresh`。未改 `config/paseo.dev.json` 打开 relay。未把 RELAY_VALIDATION 未证明项标为完成。`patches/paseo/` 保留。J3 未做。
+边界：未向 `getpaseo/paseo` 推送。未改 `config/paseo.dev.json` 打开 relay。未把 RELAY_VALIDATION 未证明项标为完成。J3 未做。
 
-下一步：在设备上允许 USB 安装 Maestro driver APK 后重跑 J2 脚本；J3 按 MASTER_PLAN 剩余项（配对、多设备、网络切换、CAS 数组并发、Desktop reconnect、额度恢复后 rewind E2E）。
+下一步：在设备上点允许 Maestro driver APK 安装后重跑 J2；K3 按 MASTER_PLAN 剩余项。
+
+## 2026-08-29 — NEXT_GOALS_R4 K1 配置并发：CAS 拒绝同 provider 覆盖
+
+完成：
+
+- 探针 `k1-gap-probe.test.ts` 基线为 **1 failed / 2 passed**。失败用例：两客户端各改同一 provider 的不同字段且省略 revision 时，后写入把 A 的 `label: "Alpha renamed by A"` 还原为 `"Alpha"`，B 的 `description` 生效。另两例通过：不同 key 新增互不丢失；省略 revision 绕过 CAS。
+- 将三例整理合入 `daemon-config-store.test.ts` 后删除探针。同 provider 用例改为双方携带同一 snapshot 的 `expectedRevision`：先写成功，后写抛 `DaemonConfigRevisionConflictError`，A 的字段保留。未做 per-provider deep-merge，也未把 provider map 改成整表替换。
+- `useDaemonConfig.patchConfig` 已把上次读取的 revision 传给 `patchDaemonConfig`；冲突时抛 `DaemonConfigConflictError`（提示 reload 后重试）。Providers 保存路径把该错误显示在表单/操作错误上并保持用户输入。协议层 `expectedRevision` 仍为 optional。
+
+验证：
+
+```bash
+test ! -f packages/server/src/server/k1-gap-probe.test.ts
+npx vitest run packages/server/src/server/daemon-config-store.test.ts \
+  packages/server/src/utils/paseo-config-file.test.ts --maxWorkers=1
+npx vitest run packages/app/src/hooks/use-daemon-config.test.tsx --maxWorkers=1
+npm run typecheck --workspace=@getpaseo/app
+npm run lint -- packages/server/src/server/daemon-config-store.test.ts \
+  packages/app/src/hooks/use-daemon-config.ts \
+  packages/app/src/hooks/use-daemon-config.test.tsx \
+  packages/app/src/screens/settings/providers-section.tsx
+```
+
+结果：探针文件已删除。store + config-file 连续两次均为 `Test Files 2 passed (2)`、`Tests 52 passed (52)`（基线 49，新增 3 例且同 provider 用例由失败转为通过）。hook 测试 3 passed。app typecheck / lint / oxfmt 退出 0。
+
+边界：未把 `expectedRevision` 改为 required。未改 Codex required / 审批 / API key 语义。未开 relay。K2 Maestro 真机、K3 Desktop reconnect、K4 rewind E2E 未做。
+
+下一步：用户在手机上点允许 driver 安装后跑 K2；然后 K3。
