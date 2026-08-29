@@ -784,3 +784,43 @@ adb -s 10AE6J03LC001JL shell settings get global animator_duration_scale
 ```
 
 边界：未向 `getpaseo/paseo` 推送。未改 `config/paseo.dev.json` 打开 relay。未把 `expectedRevision` 改为 required。未声称 J2 通过。未改动画缩放。未做 uiautomator/Appium 重写，也未降级模拟器。
+
+## 2026-08-29 — NEXT_GOALS_R4 K2：半手动真机验收（UI 自动化仍未打通）
+
+完成（harness，非表单断言）：
+
+- `test-provider-forms-android.sh` 增加 `PASEO_MAESTRO_MANUAL=1`：起隔离 daemon、`adb reverse`、`pm enable` + `am start` 启动 app，然后暂停等操作者回车（无 TTY 则等 `$OUT_DIR/continue`），**跳过 Maestro**。之后仍跑既有 `provider ls --json` + `verify_cancel_did_not_persist_provider`。断言函数与调用块本身未改。
+- `--check`：`provider-forms-android contract: OK`。README 已写半手动步骤。`--no-reinstall-driver` 未改。
+- Maestro **2.8.0** 固定路径 `$HOME/.maestro-2.8.0/` 完好（194 个 jar，mtime 19:48）；`~/.maestro` 的 **2.9.0** 未被覆盖。会话后 `dev.mobile.maestro` 与 `dev.mobile.maestro.test` 仍在。
+
+半手动跑（进行中，未收断言）：
+
+- artifacts `$HOME/.maestro-2.8.0/android-run-k2-manual`。隔离 daemon `127.0.0.1:33969`、`--no-relay`。暂停截图 `manual-paused.png` 为 welcome（Direct connection / 扫描二维码 / 设置）。无 TTY，脚本等 `continue` 文件。**未创建 continue**（空取消会假通过）。无 `provider-after.json`。
+
+`add-host-modal` 单独记录（排除「该机型 app modal 缺陷」）：
+
+- 暂停时 dump 有 `welcome-direct-connection` / `welcome-screen`，**没有** `add-host-modal`。
+- 非 Maestro：`adb shell input tap 630 1542`（Direct connection bounds `[84,1447][1176,1637]`）。随后 `uiautomator dump` **完整**（含 `</hierarchy>`），`resource-id="add-host-modal"`，截图 `add-host-modal-probe.png` 可见 Host / 端口 / 使用 SSL / 密码 / 取消 / 连接。
+- **不是** 该机型上 app 打不开 modal。先前 Maestro `tapOn welcome-direct-connection` COMPLETED 后下一步 dump `UNAVAILABLE` / 黑屏，仍是 Maestro/UIAutomator 交互后 dump 挂死。手指未亲自点；adb tap 与手指同类。
+
+Gradle 残留（失败的 2.8.0 rebuild 曾在 `/home/e` 跑 gradle）：
+
+- `/home/e` 无 `settings.gradle*` / `build.gradle*` / `gradlew` / `build/`。只有正常 `~/.gradle` 缓存（daemon 8.14.3 等）。**不用清**。不要删 `~/.gradle`。
+
+动画三项要恢复成 1（混合 `0 / 0 / 1.25` 会干扰后续判断）。实测 `adb settings put global … 1` 与 `cmd settings put global --user 0 … 1` 均 exit 0，读回仍是 `window_animation_scale=0`、`transition_animation_scale=0`、`animator_duration_scale=1.25`。Vivo 忽略 adb 写入。需在手机开发者选项里手动设。
+
+待验：J2 / K2 仍 **待验**。没有 `provider-after.json`，取消后仅 `codex` 的断言从未跑成。这是半手动真机验收，UI 自动化仍未打通。`--check` 不算真机通过。只有半手动也失败（操作者完成 Settings → Providers → 自定义表单 → 取消后仍无有效 cancel 快照），才转 uiautomator/Appium 或标注 **非真机** 的模拟器。
+
+验证：
+
+```bash
+bash packages/app/maestro/test-provider-forms-android.sh --check
+$HOME/.maestro-2.8.0/bin/maestro --version   # 2.8.0
+$HOME/.maestro/bin/maestro --version         # 2.9.0
+ls "$HOME/.maestro-2.8.0/lib"/*.jar | wc -l  # 194
+adb -s 10AE6J03LC001JL shell settings get global window_animation_scale
+adb -s 10AE6J03LC001JL shell settings get global transition_animation_scale
+adb -s 10AE6J03LC001JL shell settings get global animator_duration_scale
+```
+
+边界：未向 `getpaseo/paseo` 推送。未改 `config/paseo.dev.json` 打开 relay。未把 `expectedRevision` 改为 required。未声称 J2 通过。未创建 `continue`。未做 uiautomator/Appium 重写，也未降级模拟器。
