@@ -750,3 +750,37 @@ J2 / K2 仍为 **待验**：没有 `provider-after.json`，取消后仅 `codex` 
 J2 / K2 仍 **待验**。2.8.0 证明只读+点按可以完成，但 shipped 路径的 `launchApp` 仍是 Android 16 上 120s 挂死；不是「再点一次安装框」。
 
 下一步（2.8.0 未打通 shipped 真机）：评估直接 uiautomator/Appium，或该 flow 降级模拟器并明确标注 **非真机**；向上游报告 `DEADLINE_EXCEEDED` + 连接 open（`120002ms since last byte`）。
+
+## 2026-08-29 — NEXT_GOALS_R4 K2：2.8.0 固定路径 + adb 启动/点 8081，仍待验
+
+完成（harness，非表单断言）：
+
+- Maestro **2.8.0** 重建到固定路径 `$HOME/.maestro-2.8.0/`（未覆盖 `~/.maestro` 的 2.9.0）。构建：`git clone --depth 1 --branch cli-2.8.0`，`JAVA_HOME=/usr/lib/jvm/java-17-openjdk`，Gradle 8.14.3 `:maestro-cli:installDist -x test`，复制 `bin/`+`lib/`。harness 在该 binary 存在时把它 prepend 到 PATH。
+- flow 去掉 Maestro `launchApp` / `stopApp` / `clearState`。`clearState: true` 会 `pm clear` 杀掉 device server（YAML 注释已记）；`stopApp` 同类，未再用。harness 用 `adb shell am start -n sh.paseo.debug/.MainActivity`（无 `am force-stop` / `pm clear`）。
+- DevLauncher 不自动连，`expo-dev-launcher://` 不加载 bundle。`http://localhost:8081` 仍要点，但改由 harness `adb shell input tap`（uiautomator dump 取 bounds）。依据：2.8.0 对该行 `tapOn` **已点到** `(496, 798)`（TextView `clickable=false`，bounds `[238,764][755,832]`），行上出现 fetch 转圈，随后 post-tap `viewHierarchy` 挂 **120002ms**、连接仍 open。
+- `--no-reinstall-driver` 未改。会话后 `dev.mobile.maestro` 与 `dev.mobile.maestro.test` 仍在。
+
+动画缩放（本轮 2.8.0 真机结果包含此状态，未改回 1）：实测 `window_animation_scale=0`、`transition_animation_scale=0`、`animator_duration_scale=1.25`。用户记得三项都设成 0；第三项当时不是 0。Reanimated 日志有 reduced-motion 警告。
+
+待验：
+
+- shipped `test-provider-forms-android.sh`（serial `10AE6J03LC001JL`，隔离 `PASEO_HOME`，随机端口，`--no-relay`，Metro 8081 已在跑）。无 `provider-after.json`，取消后仅 `codex` 的断言未跑成。`--check` 不算真机通过。
+- 去掉 `launchApp` 后：`assertVisible DEVELOPMENT SERVERS` COMPLETED；Maestro `tapOn http://localhost:8081` 点到后挂。
+- 改 adb 点 8081 后：bundle 曾成功（Metro `Android Bundled`），app 到 welcome。Maestro `tapOn id: welcome-direct-connection` **COMPLETED**，下一步 `add-host-modal` 的 `viewHierarchy` 为 **UNAVAILABLE**（`Command failed (tcp:…): closed`，约 20s），failure 截图为黑屏。不是 `--check`，也不是模拟器。
+
+这条「2.8.0 固定路径 + adb 启动 + adb 点 8081 + Maestro 跑剩余 assert/tap」已失败。下一步才是直接 uiautomator/Appium，或该 flow 降级模拟器并标注 **非真机**。J2 / K2 仍 **待验**。
+
+验证：
+
+```bash
+$HOME/.maestro-2.8.0/bin/maestro --version   # 2.8.0
+$HOME/.maestro/bin/maestro --version         # 2.9.0，未被覆盖
+bash packages/app/maestro/test-provider-forms-android.sh --check
+PASEO_MAESTRO_SERIAL=10AE6J03LC001JL bash packages/app/maestro/test-provider-forms-android.sh
+adb -s 10AE6J03LC001JL shell pm list packages | grep -i maestro
+adb -s 10AE6J03LC001JL shell settings get global window_animation_scale
+adb -s 10AE6J03LC001JL shell settings get global transition_animation_scale
+adb -s 10AE6J03LC001JL shell settings get global animator_duration_scale
+```
+
+边界：未向 `getpaseo/paseo` 推送。未改 `config/paseo.dev.json` 打开 relay。未把 `expectedRevision` 改为 required。未声称 J2 通过。未改动画缩放。未做 uiautomator/Appium 重写，也未降级模拟器。
