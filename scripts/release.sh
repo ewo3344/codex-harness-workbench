@@ -1,416 +1,284 @@
 #!/usr/bin/env bash
-# 版本发布自动化脚本
-# 用法: ./scripts/release.sh <type> [version]
-#   type: alpha | beta | rc | release | patch | minor | major
+# Create a root-repository release commit and tag.
+# Usage: ./scripts/release.sh <alpha|beta|rc|release|patch|minor|major> [version]
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# 颜色定义
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+RED=$'\033[0;31m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[1;33m'
+BLUE=$'\033[0;34m'
+NC=$'\033[0m'
 
-# 日志函数
-log_info() {
-    echo -e "${BLUE}ℹ${NC} $1"
+log_info() { printf '%s\n' "${BLUE}i${NC} $1"; }
+log_success() { printf '%s\n' "${GREEN}ok${NC} $1"; }
+log_warning() { printf '%s\n' "${YELLOW}!${NC} $1"; }
+log_error() { printf '%s\n' "${RED}error${NC} $1" >&2; }
+
+usage() {
+    cat <<'USAGE'
+Usage: scripts/release.sh <type> [version]
+  type: alpha | beta | rc | release | patch | minor | major
+  version: optional explicit SemVer (recommended for the first release)
+
+The root repository has no package manifest version. The first release therefore
+uses 0.1.0 as the Rust workspace baseline when no tag exists. Paseo remains a
+pinned submodule and is never version-bumped by this script.
+USAGE
 }
 
-log_success() {
-    echo -e "${GREEN}✓${NC} $1"
+require_command() {
+    if ! command -v "$1" >/dev/null 2>&1; then
+        log_error "required command not found: $1"
+        exit 1
+    fi
 }
 
-log_warning() {
-    echo -e "${YELLOW}⚠${NC} $1"
+assert_submodule_clean() {
+    local path
+    for path in upstream/paseo upstream/oh-my-pi; do
+        [[ -d "$PROJECT_ROOT/$path" ]] || continue
+        if [[ -n "$(git -C "$PROJECT_ROOT/$path" status --porcelain --untracked-files=all)" ]]; then
+            log_error "$path has uncommitted changes; commit the submodule first"
+            git -C "$PROJECT_ROOT/$path" status --short --untracked-files=all
+            exit 1
+        fi
+    done
 }
 
-log_error() {
-    echo -e "${RED}✗${NC} $1"
-}
-
-# 检查前置条件
 check_prerequisites() {
-    log_info "检查前置条件..."
+    log_info "checking release prerequisites"
+    require_command git
+    require_command node
+    require_command npm
+    require_command cargo
 
-    # 检查 git
-    if ! command -v git &> /dev/null; then
-        log_error "Git 未安装"
+    if [[ ! -f "$PROJECT_ROOT/Cargo.toml" ]]; then
+        log_error "root Cargo.toml is missing"
         exit 1
     fi
 
-    # 检查 npm
-    if ! command -v npm &> /dev/null; then
-        log_error "npm 未安装"
+    if [[ -n "$(git -C "$PROJECT_ROOT" status --porcelain --untracked-files=normal)" ]]; then
+        log_error "root worktree is not clean; commit or remove changes before releasing"
+        git -C "$PROJECT_ROOT" status --short --untracked-files=normal
+        exit 1
+    fi
+    assert_submodule_clean
+
+    local current_branch
+    current_branch="$(git -C "$PROJECT_ROOT" branch --show-current)"
+    if [[ "$RELEASE_TYPE" == "release" && "$current_branch" != "main" ]]; then
+        log_error "a stable release must be created from main (current: $current_branch)"
         exit 1
     fi
 
-    # 检查 cargo
-    if ! command -v cargo &> /dev/null; then
-        log_error "Cargo (Rust) 未安装"
+    if [[ ! -d "$PROJECT_ROOT/upstream/paseo/node_modules" ]]; then
+        log_error "upstream/paseo dependencies are not installed; run (cd upstream/paseo && npm ci)"
         exit 1
     fi
-
-    # 检查 gh CLI（可选）
-    if ! command -v gh &> /dev/null; then
-        log_warning "gh CLI 未安装，无法自动创建 GitHub Release"
-    fi
-
-    # 检查工作目录是否干净
-    if [[ -n $(git status --porcelain) ]]; then
-        log_error "工作目录有未提交的变更，请先提交或暂存"
-        git status --short
-        exit 1
-    fi
-
-    # 检查当前分支
-    CURRENT_BRANCH=$(git branch --show-current)
-    if [[ "$RELEASE_TYPE" == "release" ]] && [[ "$CURRENT_BRANCH" != "main" ]]; then
-        log_error "正式版本必须从 main 分支发布，当前在 $CURRENT_BRANCH"
-        exit 1
-    fi
-
-    log_success "前置条件检查通过"
+    log_success "prerequisites passed"
 }
 
-# 获取当前版本
 get_current_version() {
-    # 从 package.json 读取
-    if [[ -f "upstream/paseo/package.json" ]]; then
-        CURRENT_VERSION=$(node -p "require('./upstream/paseo/package.json').version")
+    local tag version
+    tag="$(git -C "$PROJECT_ROOT" describe --tags --abbrev=0 2>/dev/null || true)"
+    if [[ -n "$tag" ]]; then
+        version="${tag#v}"
+        printf '%s\n' "$version"
     else
-        CURRENT_VERSION="0.5.0"
+        # Both root crates currently declare 0.1.0; there is no root package
+        # manifest from which a different release version could be read.
+        printf '%s\n' "0.1.0"
     fi
-    echo "$CURRENT_VERSION"
 }
 
-# 计算新版本号
-calculate_new_version() {
-    local current=$1
-    local type=$2
-    local custom_version=$3
+normalise_version() {
+    local value="$1"
+    value="${value#v}"
+    if [[ ! "$value" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+\.[0-9]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+        log_error "invalid SemVer: $1"
+        exit 1
+    fi
+    printf '%s\n' "$value"
+}
 
-    # 如果指定了自定义版本，直接使用
-    if [[ -n "$custom_version" ]]; then
-        echo "$custom_version"
+calculate_new_version() {
+    local current="$1"
+    local type="$2"
+    local custom="$3"
+    local major minor patch prerelease_type prerelease_num base
+
+    if [[ -n "$custom" ]]; then
+        normalise_version "$custom"
         return
     fi
 
-    # 解析当前版本
-    if [[ $current =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-([a-z]+)\.([0-9]+))?$ ]]; then
-        MAJOR="${BASH_REMATCH[1]}"
-        MINOR="${BASH_REMATCH[2]}"
-        PATCH="${BASH_REMATCH[3]}"
-        PRERELEASE_TYPE="${BASH_REMATCH[5]}"
-        PRERELEASE_NUM="${BASH_REMATCH[6]}"
-    else
-        log_error "无法解析当前版本: $current"
+    if [[ ! "$current" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-([0-9A-Za-z-]+)\.([0-9]+))?(\+[0-9A-Za-z.-]+)?$ ]]; then
+        log_error "cannot parse current version: $current"
         exit 1
     fi
+    major="${BASH_REMATCH[1]}"
+    minor="${BASH_REMATCH[2]}"
+    patch="${BASH_REMATCH[3]}"
+    prerelease_type="${BASH_REMATCH[5]:-}"
+    prerelease_num="${BASH_REMATCH[6]:-0}"
+    base="$major.$minor.$patch"
 
     case "$type" in
-        major)
-            echo "$((MAJOR + 1)).0.0"
-            ;;
-        minor)
-            echo "$MAJOR.$((MINOR + 1)).0"
-            ;;
-        patch)
-            echo "$MAJOR.$MINOR.$((PATCH + 1))"
-            ;;
+        major) printf '%s\n' "$((major + 1)).0.0" ;;
+        minor) printf '%s\n' "$major.$((minor + 1)).0" ;;
+        patch) printf '%s\n' "$major.$minor.$((patch + 1))" ;;
         alpha)
-            if [[ "$PRERELEASE_TYPE" == "alpha" ]]; then
-                echo "$MAJOR.$MINOR.$PATCH-alpha.$((PRERELEASE_NUM + 1))"
+            if [[ "$prerelease_type" == "alpha" ]]; then
+                printf '%s\n' "$base-alpha.$((prerelease_num + 1))"
             else
-                echo "$MAJOR.$((MINOR + 1)).0-alpha.1"
+                printf '%s\n' "$major.$((minor + 1)).0-alpha.1"
             fi
             ;;
         beta)
-            if [[ "$PRERELEASE_TYPE" == "beta" ]]; then
-                echo "$MAJOR.$MINOR.$PATCH-beta.$((PRERELEASE_NUM + 1))"
+            if [[ "$prerelease_type" == "beta" ]]; then
+                printf '%s\n' "$base-beta.$((prerelease_num + 1))"
             else
-                echo "$MAJOR.$MINOR.$PATCH-beta.1"
+                printf '%s\n' "$base-beta.1"
             fi
             ;;
         rc)
-            if [[ "$PRERELEASE_TYPE" == "rc" ]]; then
-                echo "$MAJOR.$MINOR.$PATCH-rc.$((PRERELEASE_NUM + 1))"
+            if [[ "$prerelease_type" == "rc" ]]; then
+                printf '%s\n' "$base-rc.$((prerelease_num + 1))"
             else
-                echo "$MAJOR.$MINOR.$PATCH-rc.1"
+                printf '%s\n' "$base-rc.1"
             fi
             ;;
-        release)
-            # 去掉预发布标签
-            echo "$MAJOR.$MINOR.$PATCH"
-            ;;
-        *)
-            log_error "未知的版本类型: $type"
-            exit 1
-            ;;
+        release) printf '%s\n' "$base" ;;
+        *) log_error "unknown release type: $type"; usage; exit 1 ;;
     esac
 }
 
-# 更新版本号
-update_version() {
-    local new_version=$1
-
-    log_info "更新版本号到 $new_version..."
-
-    # 更新 package.json
-    if [[ -f "upstream/paseo/package.json" ]]; then
-        cd upstream/paseo
-        npm version "$new_version" --no-git-tag-version
-        cd "$PROJECT_ROOT"
-        log_success "已更新 upstream/paseo/package.json"
-    fi
-
-    # 更新 Cargo.toml
-    if [[ -f "Cargo.toml" ]]; then
-        sed -i.bak "s/^version = \".*\"/version = \"$new_version\"/" Cargo.toml
-        rm Cargo.toml.bak
-        log_success "已更新 Cargo.toml"
-    fi
-
-    # 更新 Cargo.lock
-    if [[ -f "Cargo.lock" ]]; then
-        cargo update --workspace
-        log_success "已更新 Cargo.lock"
-    fi
-}
-
-# 运行测试
 run_tests() {
-    log_info "运行测试..."
+    log_info "running Rust tests"
+    cargo test --workspace --locked
 
-    # Rust 测试
-    log_info "运行 Rust 测试..."
-    if ! cargo test --workspace --locked; then
-        log_error "Rust 测试失败"
-        return 1
-    fi
-    log_success "Rust 测试通过"
-
-    # Paseo 测试
-    log_info "运行 Paseo 测试..."
-    cd upstream/paseo
-    if ! npx vitest run packages/server/src/server/bootstrap.smoke.test.ts packages/server/src/server/agent/provider-snapshot-manager.test.ts --maxWorkers=1 > /dev/null 2>&1; then
-        log_error "Paseo 测试失败"
-        cd "$PROJECT_ROOT"
-        return 1
-    fi
-    cd "$PROJECT_ROOT"
-    log_success "Paseo 测试通过"
-
-    log_success "所有测试通过"
+    log_info "running focused Paseo provider tests"
+    (
+        cd "$PROJECT_ROOT/upstream/paseo"
+        npx vitest run \
+            packages/server/src/server/bootstrap.smoke.test.ts \
+            packages/server/src/server/agent/provider-snapshot-manager.test.ts \
+            --maxWorkers=1
+    )
+    log_success "tests passed"
 }
 
-# 构建项目
 build_project() {
-    log_info "构建项目..."
+    log_info "building Rust bridge"
+    cargo build --release
 
-    # 构建 Rust
-    log_info "构建 Rust 组件..."
-    if ! cargo build --release; then
-        log_error "Rust 构建失败"
-        return 1
-    fi
-    log_success "Rust 构建完成"
-
-    # 构建 Paseo
-    log_info "构建 Paseo..."
-    cd upstream/paseo
-    if ! npm run build:server > /dev/null 2>&1; then
-        log_error "Paseo 构建失败"
-        cd "$PROJECT_ROOT"
-        return 1
-    fi
-    cd "$PROJECT_ROOT"
-    log_success "Paseo 构建完成"
-
-    log_success "项目构建完成"
+    log_info "building the pinned Paseo server and web UI"
+    (
+        cd "$PROJECT_ROOT/upstream/paseo"
+        npm run build:server
+        npm run build:daemon-web-ui
+    )
+    log_success "builds passed"
 }
 
-# 更新 CHANGELOG
 update_changelog() {
-    local new_version=$1
-    local release_date=$(date +%Y-%m-%d)
+    local new_version="$1"
+    local release_date
+    local section
+    local tmp
+    release_date="$(date +%Y-%m-%d)"
+    section="## [$new_version] - $release_date"$'\n\n'"### Changed"$'\n- Root release metadata and pinned submodule revision\n'
 
-    log_info "更新 CHANGELOG.md..."
-
-    if [[ ! -f "CHANGELOG.md" ]]; then
-        log_warning "CHANGELOG.md 不存在，创建新文件"
-        cat > CHANGELOG.md <<EOF
+    if [[ ! -f "$PROJECT_ROOT/CHANGELOG.md" ]]; then
+        cat >"$PROJECT_ROOT/CHANGELOG.md" <<EOF
 # Changelog
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
 ## [Unreleased]
 
-## [$new_version] - $release_date
-
-### Added
-- Version $new_version release
-
+$section
 EOF
     else
-        # 在 [Unreleased] 后插入新版本
-        sed -i.bak "/## \[Unreleased\]/a\\
-\\
-## [$new_version] - $release_date\\
-\\
-### Added\\
-- Version $new_version release\\
-" CHANGELOG.md
-        rm CHANGELOG.md.bak
+        tmp="$(mktemp "$PROJECT_ROOT/.changelog.XXXXXX")"
+        awk -v section="$section" '
+            !inserted && /^## \[Unreleased\]/ { print; print ""; print section; inserted = 1; next }
+            { print }
+            END { if (!inserted) print section }
+        ' "$PROJECT_ROOT/CHANGELOG.md" >"$tmp"
+        mv "$tmp" "$PROJECT_ROOT/CHANGELOG.md"
     fi
-
-    log_success "CHANGELOG.md 已更新"
-    log_warning "请手动编辑 CHANGELOG.md 添加详细变更"
+    log_success "CHANGELOG.md updated"
 }
 
-# 创建 Git commit 和 tag
 create_git_tag() {
-    local new_version=$1
+    local new_version="$1"
     local tag="v$new_version"
 
-    log_info "创建 Git commit 和 tag..."
+    if git -C "$PROJECT_ROOT" rev-parse "$tag" >/dev/null 2>&1; then
+        log_error "tag already exists: $tag"
+        exit 1
+    fi
 
-    # 提交变更
-    git add .
-    git commit -m "chore: release $tag"
-    log_success "已创建 commit"
+    git -C "$PROJECT_ROOT" add -- CHANGELOG.md
+    git -C "$PROJECT_ROOT" commit -m "chore: release $tag"
+    git -C "$PROJECT_ROOT" tag -a "$tag" -m "Release $tag"
+    log_success "created commit and tag $tag"
 
-    # 创建 tag
-    git tag -a "$tag" -m "Release $tag"
-    log_success "已创建 tag: $tag"
-
-    # 询问是否推送
-    read -p "是否推送到远程仓库? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        git push origin HEAD
-        git push origin "$tag"
-        log_success "已推送到远程仓库"
+    if [[ "${RELEASE_PUSH:-0}" == "1" ]]; then
+        if ! git -C "$PROJECT_ROOT" remote get-url origin >/dev/null 2>&1; then
+            log_error "RELEASE_PUSH=1 requires an origin remote"
+            exit 1
+        fi
+        git -C "$PROJECT_ROOT" push origin HEAD
+        git -C "$PROJECT_ROOT" push origin "$tag"
+        log_success "pushed $tag"
     else
-        log_warning "未推送，请手动执行: git push origin HEAD && git push origin $tag"
+        log_warning "not pushed; set RELEASE_PUSH=1 after configuring a remote"
+    fi
+
+    if [[ "${RELEASE_GITHUB_DRAFT:-0}" == "1" ]]; then
+        require_command gh
+        gh release create "$tag" --draft --generate-notes
+        log_success "created GitHub draft for $tag"
     fi
 }
 
-# 创建 GitHub Release
-create_github_release() {
-    local new_version=$1
-    local tag="v$new_version"
-
-    if ! command -v gh &> /dev/null; then
-        log_warning "gh CLI 未安装，跳过 GitHub Release 创建"
-        log_info "请手动访问: https://github.com/yourorg/codex-remote-workbench/releases/new?tag=$tag"
-        return
-    fi
-
-    log_info "创建 GitHub Release..."
-
-    # 判断是否为预发布
-    local prerelease_flag=""
-    if [[ $new_version =~ (alpha|beta|rc) ]]; then
-        prerelease_flag="--prerelease"
-    fi
-
-    # 提取 CHANGELOG 中的变更说明
-    local notes=""
-    if [[ -f "CHANGELOG.md" ]]; then
-        notes=$(sed -n "/## \[$new_version\]/,/## \[/p" CHANGELOG.md | head -n -1)
-    fi
-
-    if [[ -z "$notes" ]]; then
-        notes="Release $tag"
-    fi
-
-    # 创建 release
-    gh release create "$tag" \
-        --title "Release $tag" \
-        --notes "$notes" \
-        $prerelease_flag \
-        --draft
-
-    log_success "GitHub Release 已创建（草稿状态）"
-    log_info "请访问 GitHub 确认并发布: https://github.com/yourorg/codex-remote-workbench/releases"
-}
-
-# 主流程
 main() {
     cd "$PROJECT_ROOT"
-
-    # 解析参数
-    if [[ $# -lt 1 ]]; then
-        log_error "用法: $0 <type> [version]"
-        log_info "type: alpha | beta | rc | release | patch | minor | major"
-        log_info "version: 可选，指定自定义版本号"
+    if [[ $# -lt 1 || $# -gt 2 ]]; then
+        usage
         exit 1
     fi
 
-    RELEASE_TYPE=$1
-    CUSTOM_VERSION=${2:-}
-
-    log_info "===== 版本发布流程 ====="
-    log_info "发布类型: $RELEASE_TYPE"
-
-    # 检查前置条件
+    RELEASE_TYPE="$1"
+    CUSTOM_VERSION="${2:-}"
     check_prerequisites
 
-    # 获取当前版本
-    CURRENT_VERSION=$(get_current_version)
-    log_info "当前版本: $CURRENT_VERSION"
+    local current_version new_version
+    current_version="$(get_current_version)"
+    new_version="$(calculate_new_version "$current_version" "$RELEASE_TYPE" "$CUSTOM_VERSION")"
+    log_info "current root release baseline: $current_version"
+    log_info "next version: $new_version"
 
-    # 计算新版本
-    NEW_VERSION=$(calculate_new_version "$CURRENT_VERSION" "$RELEASE_TYPE" "$CUSTOM_VERSION")
-    log_info "新版本: $NEW_VERSION"
-
-    # 确认
-    read -p "确认发布 v$NEW_VERSION? (y/N): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        log_warning "取消发布"
-        exit 0
+    if [[ "${RELEASE_CONFIRM:-0}" != "1" ]]; then
+        read -r -p "Create v$new_version? (y/N) " answer
+        if [[ ! "$answer" =~ ^[Yy]$ ]]; then
+            log_warning "release cancelled"
+            exit 0
+        fi
     fi
 
-    # 更新版本号
-    update_version "$NEW_VERSION"
-
-    # 运行测试
-    if ! run_tests; then
-        log_error "测试失败，发布中止"
-        git checkout .
-        exit 1
-    fi
-
-    # 构建项目
-    if ! build_project; then
-        log_error "构建失败，发布中止"
-        git checkout .
-        exit 1
-    fi
-
-    # 更新 CHANGELOG
-    update_changelog "$NEW_VERSION"
-
-    # 创建 Git tag
-    create_git_tag "$NEW_VERSION"
-
-    # 创建 GitHub Release
-    create_github_release "$NEW_VERSION"
-
-    log_success "===== 发布完成 ====="
-    log_info "版本: v$NEW_VERSION"
-    log_info "下一步："
-    log_info "  1. 编辑 CHANGELOG.md 补充详细变更"
-    log_info "  2. 访问 GitHub Releases 确认并发布"
-    log_info "  3. 通知团队和用户"
+    run_tests
+    build_project
+    assert_submodule_clean
+    update_changelog "$new_version"
+    create_git_tag "$new_version"
+    log_success "release complete: v$new_version"
 }
 
 main "$@"

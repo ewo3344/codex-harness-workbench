@@ -14,7 +14,8 @@ on:
 
 env:
   RUST_VERSION: '1.88.0'
-  NODE_VERSION: '18'
+  # Paseo requires Node 22 (see upstream/paseo/.tool-versions).
+  NODE_VERSION: '22'
 
 jobs:
   # 代码质量检查
@@ -24,6 +25,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # This resolves upstream/paseo to the gitlink recorded by the root
+          # repository. Update that pointer after publishing a fork revision.
           submodules: recursive
 
       - name: Setup Rust
@@ -62,6 +65,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # This resolves upstream/paseo to the gitlink recorded by the root
+          # repository. Update that pointer after publishing a fork revision.
           submodules: recursive
 
       - name: Setup Rust
@@ -107,7 +112,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # This resolves upstream/paseo to the gitlink recorded by the root
+          # repository. Update that pointer after publishing a fork revision.
           submodules: recursive
+
+      - name: Record pinned Paseo revision
+        run: git -C upstream/paseo rev-parse HEAD
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -125,49 +135,15 @@ jobs:
       - name: Run tests
         run: |
           cd upstream/paseo
-          npm test -- \
+          npx vitest run \
             packages/server/src/server/bootstrap.smoke.test.ts \
             packages/server/src/server/agent/provider-snapshot-manager.test.ts \
             --maxWorkers=1
 
-      - name: Generate coverage
-        run: cd upstream/paseo && npm run test:coverage
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          files: ./upstream/paseo/coverage/lcov.info
-          flags: paseo
-
-  # 集成测试（需要真实 Codex）
-  test-integration:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    # 只在 develop 和 main 分支运行，节省 CI 时间
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Setup Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ env.RUST_VERSION }}
-
-      - name: Setup Codex CLI
-        run: |
-          # 这里需要实际的 Codex 安装步骤
-          # 暂时跳过，因为需要认证
-          echo "Codex integration tests skipped (require authentication)"
-
-      - name: Run integration tests
-        if: false  # 暂时禁用
-        run: CHW_REAL_CODEX_TESTS=1 ./scripts/verify-rust.sh
-
-  # 构建产物
+  # 构建可发布的 Rust bridge 产物。Paseo 的桌面、移动端和 server 发布
+  # 由 pinned submodule 自身的 workflows 负责，不在这里生成空的 dist 目录。
   build:
-    name: Build Artifacts
+    name: Build Rust Bridge Artifacts
     needs: [lint, test-rust, test-paseo]
     runs-on: ${{ matrix.os }}
     strategy:
@@ -188,6 +164,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # Build and test the exact submodule revision recorded by the parent.
           submodules: recursive
 
       - name: Setup Rust
@@ -197,32 +174,31 @@ jobs:
           target: ${{ matrix.target }}
           override: true
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
       - name: Build Rust
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Build Paseo
-        run: |
-          cd upstream/paseo
-          npm ci
-          npm run build:server
-          npm run build:daemon-web-ui
-
       - name: Package artifacts
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p dist
-          # 打包逻辑根据平台调整
-          # TODO: 实现打包脚本
+          binary="target/${{ matrix.target }}/release/codex-bridge"
+          if [[ ! -f "$binary" && -f "${binary}.exe" ]]; then
+            binary="${binary}.exe"
+          fi
+          test -f "$binary"
+          cp "$binary" "dist/codex-bridge-${{ matrix.artifact }}${binary##*codex-bridge}"
+          {
+            printf 'artifact=%s\n' '${{ matrix.artifact }}'
+            printf 'target=%s\n' '${{ matrix.target }}'
+            printf 'source_revision=%s\n' "$(git rev-parse HEAD)"
+          } > "dist/codex-bridge-${{ matrix.artifact }}.build.txt"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: codex-harness-${{ matrix.artifact }}
-          path: dist/*
+          path: dist/
 
   # 发布（仅在打 tag 时）
   release:
@@ -230,13 +206,15 @@ jobs:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # 需要完整历史来生成 changelog
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: dist
 
@@ -253,22 +231,10 @@ jobs:
             echo "prerelease=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Generate Release Notes
-        run: |
-          # 使用脚本生成 release notes
-          chmod +x scripts/generate-release-notes.sh
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          if [ -n "$PREVIOUS_TAG" ]; then
-            ./scripts/generate-release-notes.sh ${{ steps.version.outputs.version }} $PREVIOUS_TAG > RELEASE_NOTES.md
-          else
-            echo "Initial release" > RELEASE_NOTES.md
-          fi
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           name: Release ${{ steps.version.outputs.version }}
-          body_path: RELEASE_NOTES.md
           files: dist/**/*
           prerelease: ${{ steps.version.outputs.prerelease }}
           generate_release_notes: true
@@ -280,28 +246,3 @@ jobs:
         run: |
           echo "🎉 Release ${{ steps.version.outputs.version }} published!"
           # 这里可以添加通知逻辑（Slack、Email 等）
-
-  # 文档部署
-  docs:
-    name: Deploy Documentation
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Build docs
-        run: |
-          # 如果有文档构建步骤
-          echo "Documentation build placeholder"
-
-      - name: Deploy to GitHub Pages
-        if: false  # 暂时禁用
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs

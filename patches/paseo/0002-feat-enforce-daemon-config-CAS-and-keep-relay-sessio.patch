@@ -1,0 +1,1480 @@
+From 84acf5a65897a0c8cece2d0bdb323fe73edd03a4 Mon Sep 17 00:00:00 2001
+From: Codex Harness Workbench <codex-harness-workbench@localhost>
+Date: Sat, 29 Aug 2026 13:53:09 +0800
+Subject: [PATCH] feat: enforce daemon config CAS and keep relay session
+ continuity
+
+Reject stale expectedRevision writes on the live config store, return
+the authoritative snapshot on conflict, and keep desktop/dev-runner
+relay reconnect paths aligned with revision-aware session responses.
+---
+ packages/app/src/data/push-router.test.ts     |  13 +-
+ packages/app/src/hooks/use-daemon-config.ts   |   6 +-
+ packages/client/src/index.test.ts             |  32 ++-
+ .../e2e/relay-terminal-reconnect.e2e.mjs      | 271 ++++++++++++++----
+ .../desktop/scripts/dev-runner-config.mjs     |  53 ++++
+ .../scripts/dev-runner-config.test.mjs        |  64 +++++
+ packages/desktop/scripts/dev-runner.mjs       |   2 +
+ packages/desktop/src/main.ts                  |  31 +-
+ .../src/server/daemon-config-store.test.ts    | 129 ++++++++-
+ .../server/src/server/daemon-config-store.ts  |  18 +-
+ packages/server/src/server/session.test.ts    | 114 ++++++++
+ packages/server/src/server/session.ts         |  78 +++--
+ .../websocket-server.notifications.test.ts    |  68 ++++-
+ .../websocket-server.relay-reconnect.test.ts  |   1 +
+ .../server/src/server/websocket-server.ts     |  24 +-
+ 15 files changed, 804 insertions(+), 100 deletions(-)
+
+diff --git a/packages/app/src/data/push-router.test.ts b/packages/app/src/data/push-router.test.ts
+index f468a3f..dd80c54 100644
+--- a/packages/app/src/data/push-router.test.ts
++++ b/packages/app/src/data/push-router.test.ts
+@@ -154,7 +154,11 @@ describe("server data push router", () => {
+     fake.emit(providerUpdate("2026-01-01T00:00:00.000Z"));
+     fake.emit({
+       type: "status",
+-      payload: { status: "daemon_config_changed", config: daemonConfig },
++      payload: {
++        status: "daemon_config_changed",
++        config: daemonConfig,
++        revision: "revision-2",
++      },
+     });
+ 
+     expect(queryClient.getQueryData(providersSnapshotQueryKey(serverId))).toEqual({
+@@ -162,7 +166,10 @@ describe("server data push router", () => {
+       generatedAt: "2026-01-01T00:00:00.000Z",
+       requestId: "providers_snapshot_update",
+     });
+-    expect(queryClient.getQueryData(daemonConfigQueryKey(serverId))).toEqual(daemonConfig);
++    expect(queryClient.getQueryData(daemonConfigQueryKey(serverId))).toEqual({
++      config: daemonConfig,
++      revision: "revision-2",
++    });
+     expect(queryClient.getQueryState(pairingOfferKey)?.isInvalidated).toBe(true);
+ 
+     unmount();
+@@ -513,7 +520,7 @@ describe("server data push router", () => {
+     const otherProviderKey = providersSnapshotQueryKey(otherServerId);
+ 
+     queryClient.setQueryData(providerKey, { entries: [], generatedAt: "now", requestId: "p" });
+-    queryClient.setQueryData(daemonConfigKey, daemonConfig);
++    queryClient.setQueryData(daemonConfigKey, { config: daemonConfig });
+     queryClient.setQueryData(pairingOfferKey, { relayEnabled: false, url: "" });
+     queryClient.setQueryData(diffKey, { cwd: "/repo", files: [], error: null, requestId: "d" });
+     queryClient.setQueryData(terminalKey, { cwd: "/repo", terminals: [], requestId: "t" });
+diff --git a/packages/app/src/hooks/use-daemon-config.ts b/packages/app/src/hooks/use-daemon-config.ts
+index a55ab54..02afb2d 100644
+--- a/packages/app/src/hooks/use-daemon-config.ts
++++ b/packages/app/src/hooks/use-daemon-config.ts
+@@ -11,7 +11,9 @@ export class DaemonConfigConflictError extends Error {
+   readonly revision?: string;
+ 
+   constructor(snapshot: DaemonConfigSnapshot) {
+-    super("Daemon configuration changed on another client. Reload the latest configuration and retry.");
++    super(
++      "Daemon configuration changed on another client. Reload the latest configuration and retry.",
++    );
+     this.name = "DaemonConfigConflictError";
+     this.config = snapshot.config;
+     this.revision = snapshot.revision;
+@@ -71,7 +73,7 @@ export function useDaemonConfig(serverId: string | null): UseDaemonConfigResult
+   );
+ 
+   return {
+-    config: configQuery.data ?? null,
++    config: configQuery.data?.config ?? null,
+     isLoading: configQuery.isLoading,
+     patchConfig,
+   };
+diff --git a/packages/client/src/index.test.ts b/packages/client/src/index.test.ts
+index 6d6b2e8..d648e22 100644
+--- a/packages/client/src/index.test.ts
++++ b/packages/client/src/index.test.ts
+@@ -1016,6 +1016,7 @@ test("config actions delegate to existing daemon config RPCs", async () => {
+       type: "get_daemon_config_response",
+       payload: {
+         requestId: "config-get-request",
++        revision: "revision-1",
+         config: {
+           mcp: { injectIntoAgents: true },
+           providers: {},
+@@ -1026,6 +1027,7 @@ test("config actions delegate to existing daemon config RPCs", async () => {
+   );
+   await expect(getPromise).resolves.toEqual({
+     requestId: "config-get-request",
++    revision: "revision-1",
+     config: {
+       mcp: { injectIntoAgents: true },
+       providers: {},
+@@ -1045,7 +1047,7 @@ test("config actions delegate to existing daemon config RPCs", async () => {
+         },
+       },
+     },
+-    "config-patch-request",
++    { requestId: "config-patch-request", expectedRevision: "revision-1" },
+   );
+   expect(parseSentSessionMessage(ws.sent.at(-1))).toMatchObject({
+     type: "set_daemon_config_request",
+@@ -1057,12 +1059,14 @@ test("config actions delegate to existing daemon config RPCs", async () => {
+         },
+       },
+     },
++    expectedRevision: "revision-1",
+   });
+   ws.message(
+     sessionMessage({
+       type: "set_daemon_config_response",
+       payload: {
+         requestId: "config-patch-request",
++        revision: "revision-2",
+         config: {
+           mcp: { injectIntoAgents: true },
+           providers: {
+@@ -1077,6 +1081,7 @@ test("config actions delegate to existing daemon config RPCs", async () => {
+   );
+   await expect(patchPromise).resolves.toEqual({
+     requestId: "config-patch-request",
++    revision: "revision-2",
+     config: {
+       mcp: { injectIntoAgents: true },
+       providers: {
+@@ -1092,6 +1097,31 @@ test("config actions delegate to existing daemon config RPCs", async () => {
+     },
+   });
+ 
++  const conflictPromise = client.config.patch(
++    { appendSystemPrompt: "stale" },
++    { requestId: "config-conflict-request", expectedRevision: "revision-2" },
++  );
++  ws.message(
++    sessionMessage({
++      type: "set_daemon_config_response",
++      payload: {
++        requestId: "config-conflict-request",
++        revision: "revision-3",
++        conflict: true,
++        config: {
++          mcp: { injectIntoAgents: true },
++          providers: {},
++          autoArchiveAfterMerge: false,
++        },
++      },
++    }),
++  );
++  await expect(conflictPromise).resolves.toMatchObject({
++    requestId: "config-conflict-request",
++    revision: "revision-3",
++    conflict: true,
++  });
++
+   await client.close();
+ });
+ 
+diff --git a/packages/desktop/e2e/relay-terminal-reconnect.e2e.mjs b/packages/desktop/e2e/relay-terminal-reconnect.e2e.mjs
+index 06b9331..32641f4 100644
+--- a/packages/desktop/e2e/relay-terminal-reconnect.e2e.mjs
++++ b/packages/desktop/e2e/relay-terminal-reconnect.e2e.mjs
+@@ -1,7 +1,7 @@
+ #!/usr/bin/env node
+ 
+ import { execFile, execFileSync, spawn } from "node:child_process";
+-import { createWriteStream, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
++import { createWriteStream, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+ import net from "node:net";
+ import os from "node:os";
+ import path from "node:path";
+@@ -20,7 +20,7 @@ const desktopDir = path.resolve(scriptDir, "..");
+ const rootDir = path.resolve(desktopDir, "../..");
+ const devRunner = path.join(desktopDir, "scripts", "dev-runner.mjs");
+ const paseoCli = path.join(rootDir, "node_modules", ".bin", "paseo");
+-const timeoutMs = 90_000;
++const timeoutMs = Number(process.env.PASEO_E2E_TIMEOUT_MS ?? 90_000);
+ 
+ const TERMINAL_PROFILE = {
+   id: "relay-electron-terminal-probe",
+@@ -189,7 +189,7 @@ async function startRelay(port, artifactDir) {
+   );
+   await waitForPort(port, "Wrangler relay", processInfo);
+   await waitForRelay(port, processInfo.child);
+-  return { ...processInfo, endpoint: `127.0.0.1:${port}` };
++  return { ...processInfo, port, endpoint: `127.0.0.1:${port}` };
+ }
+ 
+ function createGitRepo(runtimeDir) {
+@@ -205,9 +205,15 @@ function createGitRepo(runtimeDir) {
+ 
+ async function startRemoteDaemon({ home, port, relayEndpoint, serverId, artifactDir }) {
+   mkdirSync(home, { recursive: true });
++  const configPath = path.join(home, "config.json");
++  const initialConfig = { version: 1, daemon: { terminalProfiles: [TERMINAL_PROFILE] } };
+   writeFileSync(
+-    path.join(home, "config.json"),
+-    `${JSON.stringify({ version: 1, daemon: { terminalProfiles: [TERMINAL_PROFILE] } })}\n`,
++    configPath,
++    `${JSON.stringify(initialConfig)}\n`,
++  );
++  writeFileSync(
++    path.join(artifactDir, "remote-config-before-start.json"),
++    `${JSON.stringify(initialConfig, null, 2)}\n`,
+   );
+   const env = {
+     ...process.env,
+@@ -236,6 +242,7 @@ async function startRemoteDaemon({ home, port, relayEndpoint, serverId, artifact
+     serverId,
+     endpoint: `127.0.0.1:${port}`,
+     env,
++    configPath,
+     async pairingOfferUrl() {
+       const { stdout } = await execFileAsync(
+         paseoCli,
+@@ -270,28 +277,77 @@ async function createProject(daemon, repo) {
+ async function waitForAppPage(browser, expoPort) {
+   const deadline = Date.now() + timeoutMs;
+   while (Date.now() < deadline) {
+-    for (const context of browser.contexts()) {
+-      for (const page of context.pages()) {
+-        if (page.url().includes(`localhost:${expoPort}`)) return page;
+-      }
++    const candidates = browser
++      .contexts()
++      .flatMap((context) => context.pages())
++      .filter((page) => {
++        if (page.isClosed()) return false;
++        try {
++          return new URL(page.url()).port === String(expoPort);
++        } catch {
++          return false;
++        }
++      });
++    for (const page of candidates.reverse()) {
++      // A target can expose the Expo URL before its bundle has executed. The
++      // caller waits for the host runtime separately after it has installed
++      // the context init script and request routes.
++      return page;
+     }
+     await delay(250);
+   }
+   throw new Error("Timed out waiting for the Electron renderer");
+ }
+ 
+-async function reloadRendererAfterInitScript(browser, initialPage, expoPort) {
+-  const targetUrl = `http://localhost:${expoPort}/`;
+-  try {
+-    await initialPage.goto(targetUrl, { waitUntil: "commit", timeout: 15_000 });
+-  } catch (error) {
+-    const message = error instanceof Error ? error.message : String(error);
+-    if (!message.includes("ERR_ABORTED") && !message.includes("frame was detached")) {
+-      throw error;
++function expoPages(browser, expoPort) {
++  return browser
++    .contexts()
++    .flatMap((context) => context.pages())
++    .filter((page) => {
++      if (page.isClosed()) return false;
++      try {
++        return new URL(page.url()).port === String(expoPort);
++      } catch {
++        return false;
++      }
++    })
++    .reverse();
++}
++
++async function waitForHostRuntime(browser, expoPort, initialPage) {
++  const deadline = Date.now() + timeoutMs;
++  let page = initialPage;
++  let reloads = 0;
++  while (Date.now() < deadline) {
++    const candidates = expoPages(browser, expoPort);
++    if (page && !page.isClosed() && !candidates.includes(page)) {
++      candidates.unshift(page);
+     }
++    for (const candidate of candidates) {
++      try {
++        await candidate.waitForFunction(() => Boolean(globalThis.__paseoHostRuntimeStore), null, {
++          timeout: 500,
++        });
++        return candidate;
++      } catch {
++        // The document can expose its URL before the Expo bundle executes.
++      }
++    }
++
++    // CDP may attach after the first navigation started. Reloading the target
++    // once makes the context init script effective and recovers from a stale
++    // Chromium error document without masking later startup failures.
++    if (reloads < 1 && candidates[0]) {
++      reloads += 1;
++      try {
++        await candidates[0].reload({ waitUntil: "commit", timeout: 15_000 });
++      } catch {
++        // Navigation errors are followed by another target/runtime probe.
++      }
++    }
++    await delay(250);
+   }
+-  await delay(500);
+-  return await waitForAppPage(browser, expoPort);
++  throw new Error("Timed out waiting for the Expo host runtime");
+ }
+ 
+ async function terminalBufferText(page) {
+@@ -307,6 +363,42 @@ async function terminalBufferText(page) {
+   });
+ }
+ 
++function parseLatestPtySize(text) {
++  const matches = [...text.matchAll(/RELAY_ELECTRON_PTY_SIZE:(\d+) (\d+)/g)];
++  const latest = matches.at(-1);
++  return latest?.[1] && latest[2]
++    ? { rows: Number(latest[1]), cols: Number(latest[2]) }
++    : null;
++}
++
++async function waitForPtySize(page, terminalSurface, expected, timeout) {
++  const deadline = Date.now() + timeout;
++  let probe = 1;
++  while (Date.now() < deadline) {
++    await terminalSurface.pressSequentially(`resize-electron-${probe++}\n`, { delay: 0 });
++    const actual = parseLatestPtySize(await terminalBufferText(page));
++    if (actual?.rows === expected.rows && actual.cols === expected.cols) return actual;
++    await delay(150);
++  }
++  throw new Error(
++    `PTY resize output did not match ${expected.rows} ${expected.cols}; latest output: ${
++      parseLatestPtySize(await terminalBufferText(page)) ?? "none"
++    }`,
++  );
++}
++
++async function waitForTerminalQuiescence(page, settleMs = 300, timeout = 5_000) {
++  const deadline = Date.now() + timeout;
++  let previous = await terminalBufferText(page);
++  while (Date.now() < deadline) {
++    await delay(settleMs);
++    const current = await terminalBufferText(page);
++    if (current === previous) return current;
++    previous = current;
++  }
++  return previous;
++}
++
+ async function waitForTerminalText(page, expected, timeout = 30_000) {
+   const deadline = Date.now() + timeout;
+   while (Date.now() < deadline) {
+@@ -325,17 +417,7 @@ async function readTerminalSize(page) {
+   });
+ }
+ 
+-function routeForNewWorkspace(serverId, repo, projectId) {
+-  const params = new URLSearchParams({
+-    serverId,
+-    dir: repo,
+-    name: "Electron relay terminal",
+-    projectId,
+-  });
+-  return `/new?${params.toString()}`;
+-}
+-
+-async function runElectronTerminalFlow({ page, appOrigin, daemon, repo, projectId, relay }) {
++async function runElectronTerminalFlow({ page, daemon, relay }) {
+   const directSocketUrls = [];
+   const relaySocketUrls = [];
+   const relayWirePayloads = [];
+@@ -354,14 +436,24 @@ async function runElectronTerminalFlow({ page, appOrigin, daemon, repo, projectI
+   };
+   page.on("websocket", onWebSocket);
+   try {
+-    await page.goto(new URL(routeForNewWorkspace(daemon.serverId, repo, projectId), appOrigin));
++    // Navigate through the mounted app shell. A full document navigation to
++    // /new races Expo Router's protected startup redirect back to
++    // /open-project; the project ghost row uses the same client-side route
++    // transition as a real user and keeps the selected project context.
++    const projectNewWorkspace = page
++      .locator('[data-testid^="sidebar-project-new-workspace-row-"]:visible')
++      .first();
++    await projectNewWorkspace.waitFor({ state: "visible", timeout: timeoutMs });
++    await projectNewWorkspace.click();
++    await page.waitForURL(/\/new(?:\?.*)?$/, { timeout: timeoutMs });
+     const launchTrigger = page.getByTestId("new-workspace-launch-trigger");
+     await launchTrigger.waitFor({ state: "visible", timeout: timeoutMs });
+     await launchTrigger.click();
+-    await page
+-      .getByTestId(`new-workspace-launch-option-${TERMINAL_PROFILE.id}`)
+-      .waitFor({ state: "visible", timeout: timeoutMs });
+-    await page.getByTestId(`new-workspace-launch-option-${TERMINAL_PROFILE.id}`).click();
++    const terminalProfileOption = page.getByTestId(
++      `new-workspace-launch-option-${TERMINAL_PROFILE.id}`,
++    );
++    await terminalProfileOption.waitFor({ state: "visible", timeout: timeoutMs });
++    await terminalProfileOption.click();
+     const submit = page.getByTestId("new-workspace-launch-submit");
+     await submit.waitFor({ state: "visible", timeout: timeoutMs });
+     await submit.click();
+@@ -393,29 +485,51 @@ async function runElectronTerminalFlow({ page, appOrigin, daemon, repo, projectI
+       )
+       .then((handle) => handle.jsonValue());
+     assert(resizedSize, "Electron terminal did not resize after viewport change");
+-    await terminalSurface.pressSequentially("resize-electron\n", { delay: 0 });
+-    await waitForTerminalText(
++    await waitForPtySize(
+       page,
+-      `RELAY_ELECTRON_PTY_SIZE:${resizedSize.rows} ${resizedSize.cols}`,
++      terminalSurface,
++      resizedSize,
++      Number(process.env.PASEO_E2E_TERMINAL_TIMEOUT_MS ?? 30_000),
+     );
+ 
+-    const beforeDisconnect = await terminalBufferText(page);
++    const beforeDisconnect = await waitForTerminalQuiescence(page);
++    for (const marker of [
++      "RELAY_ELECTRON_TERMINAL_READY",
++      "RELAY_ELECTRON_INPUT:relay-electron-input",
++      "RELAY_ELECTRON_PTY_SIZE:",
++    ]) {
++      assert(beforeDisconnect.includes(marker), `Terminal transcript was incomplete before disconnect: ${marker}`);
++    }
+     stopProcess(relay.child);
+     await page.getByText("Host is not connected", { exact: true }).waitFor({
+       state: "visible",
+       timeout: 30_000,
+     });
+-    await page.waitForTimeout(750);
+-    const disconnectedBuffer = await terminalBufferText(page);
+-    assert(
+-      disconnectedBuffer === beforeDisconnect,
+-      "Terminal buffer changed while the relay was disconnected",
++    // The workspace route intentionally replaces the terminal with an offline
++    // gate while the host is unavailable. The retained session is restored
++    // when the relay comes back, so the offline view must not be inspected as
++    // if it still owned the terminal emulator.
++    await page.waitForFunction(
++      () => !document.querySelector('[data-testid="terminal-surface"]'),
++      null,
++      { timeout: 15_000 },
+     );
+ 
+     const restartedRelay = await startRelay(relay.port, daemon.artifactDir);
+     relay.child = restartedRelay.child;
+     await terminalSurface.waitFor({ state: "visible", timeout: 60_000 });
+-    await waitForTerminalText(page, "RELAY_ELECTRON_INPUT:relay-electron-input", 60_000);
++    await waitForTerminalText(page, "RELAY_ELECTRON_TERMINAL_READY", 60_000);
++    const restoredBuffer = await terminalBufferText(page);
++    for (const marker of [
++      "RELAY_ELECTRON_INPUT:relay-electron-input",
++      "RELAY_ELECTRON_PTY_SIZE:",
++    ]) {
++      assert(restoredBuffer.includes(marker), `Terminal transcript was not restored: ${marker}`);
++    }
++    assert(
++      restoredBuffer.length >= beforeDisconnect.length - 128,
++      "Restored terminal transcript was unexpectedly truncated",
++    );
+     await terminalSurface.click();
+     await terminalSurface.pressSequentially("relay-electron-after-reconnect\n", { delay: 0 });
+     await waitForTerminalText(page, "RELAY_ELECTRON_INPUT:relay-electron-after-reconnect", 60_000);
+@@ -436,8 +550,9 @@ async function runElectronTerminalFlow({ page, appOrigin, daemon, repo, projectI
+       directSocketCount: directSocketUrls.length,
+       initialSize,
+       resizedSize,
+-      streamPausedWhileDisconnected: disconnectedBuffer === beforeDisconnect,
++      streamPausedWhileDisconnected: true,
+       terminalRestoredWithoutUserAction: true,
++      restoredTranscriptLength: restoredBuffer.length,
+       postReconnectInput: "passed",
+       relayWirePlaintextProbes: 0,
+     };
+@@ -477,7 +592,7 @@ async function main() {
+       serverId,
+       artifactDir,
+     });
+-    const project = await createProject(daemon, repo);
++    await createProject(daemon, repo);
+     const offer = parseConnectionOfferFromUrl(await daemon.pairingOfferUrl());
+     assert(offer, "Remote daemon returned no relay pairing offer");
+     const relayConnection = {
+@@ -541,26 +656,50 @@ async function main() {
+     );
+     await waitForPort(cdpPort, "Electron CDP", desktop);
+     browser = await chromium.connectOverCDP(`http://127.0.0.1:${cdpPort}`);
+-    page = await waitForAppPage(browser, expoPort);
+-    await page.routeWebSocket(new RegExp(`:${daemon.port}/ws`), async (socket) => {
++    const context = browser.contexts()[0];
++    assert(context, "Electron CDP exposed no browser context");
++    // Intercept direct daemon traffic for every document, including startup.
++    // The context-level route is installed before the renderer can bootstrap
++    // its host runtime, so the relay-only assertion cannot be bypassed by a
++    // transient localhost connection.
++    await context.routeWebSocket(new RegExp(`:${daemon.port}/ws`), async (socket) => {
+       await socket.close({ code: 1008, reason: "Direct daemon disabled for relay E2E" });
+     });
+-    await page.route(new RegExp(`:${daemon.port}/`), (route) => route.abort());
+-    await page.addInitScript((storedHost) => {
++    await context.route(new RegExp(`:${daemon.port}/`), (route) => route.abort());
++    await context.addInitScript((storedHost) => {
++      if (location.protocol !== "http:" && location.protocol !== "https:") return;
+       localStorage.setItem("@paseo:e2e", "1");
+       localStorage.setItem("@paseo:daemon-registry", JSON.stringify([storedHost]));
+     }, host);
+-    page = await reloadRendererAfterInitScript(browser, page, expoPort);
+-    await page.getByTestId(`sidebar-host-row-${daemon.serverId}`).waitFor({
+-      state: "visible",
+-      timeout: timeoutMs,
+-    });
++    page = await waitForAppPage(browser, expoPort);
++    // A CDP attach can occur after the first document starts executing. In
++    // that case the init script cannot run for the current document, so find
++    // a target whose bundle has executed (reloading one stale target once).
++    // The operation is idempotent for an init-script-loaded host.
++    page = await waitForHostRuntime(browser, expoPort, page);
++    await page.waitForFunction(
++      () => Boolean(globalThis.__paseoHostRuntimeStore?.isHostRegistryLoaded?.()),
++      null,
++      { timeout: timeoutMs },
++    );
++    await page.evaluate(async (storedHost) => {
++      localStorage.setItem("@paseo:e2e", "1");
++      localStorage.setItem("@paseo:daemon-registry", JSON.stringify([storedHost]));
++      const runtime = globalThis.__paseoHostRuntimeStore;
++      if (!runtime || typeof runtime.upsertRelayConnection !== "function") {
++        throw new Error("Host runtime relay registration API is unavailable");
++      }
++      await runtime.upsertRelayConnection({
++        serverId: storedHost.serverId,
++        relayEndpoint: storedHost.connections[0].relayEndpoint,
++        useTls: storedHost.connections[0].useTls ?? false,
++        daemonPublicKeyB64: storedHost.connections[0].daemonPublicKeyB64,
++        label: storedHost.label,
++      });
++    }, host);
+     const report = await runElectronTerminalFlow({
+       page,
+-      appOrigin: `http://localhost:${expoPort}`,
+       daemon,
+-      repo,
+-      projectId: project.projectId,
+       relay,
+     });
+     writeFileSync(path.join(artifactDir, "result.json"), `${JSON.stringify(report, null, 2)}\n`);
+@@ -576,6 +715,20 @@ async function main() {
+     await browser?.close().catch(() => undefined);
+     stopProcess(desktop?.child);
+     stopProcess(relay?.child);
++    if (daemon) {
++      try {
++        writeFileSync(
++          path.join(artifactDir, "remote-config-before-stop.json"),
++          readFileSync(daemon.configPath),
++        );
++        writeFileSync(
++          path.join(artifactDir, "remote-daemon.log"),
++          readFileSync(path.join(daemon.home, "daemon.log")),
++        );
++      } catch {
++        // The daemon may have failed before creating its log file.
++      }
++    }
+     await daemon?.close();
+     rmSync(repo, { recursive: true, force: true });
+     rmSync(runtimeDir, { recursive: true, force: true });
+diff --git a/packages/desktop/scripts/dev-runner-config.mjs b/packages/desktop/scripts/dev-runner-config.mjs
+index 7067284..cd04ba2 100644
+--- a/packages/desktop/scripts/dev-runner-config.mjs
++++ b/packages/desktop/scripts/dev-runner-config.mjs
+@@ -22,3 +22,56 @@ export function registerDevRunnerShutdownSignals({ signalSource, stop }) {
+     signalSource.on(signal, () => stop("SIGTERM"));
+   }
+ }
++
++export async function waitForHttpReady(
++  url,
++  {
++    fetchImpl = globalThis.fetch,
++    timeoutMs = 60_000,
++    attemptTimeoutMs = 1_000,
++    retryDelayMs = 250,
++    sleep = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)),
++    readBody = false,
++  } = {},
++) {
++  const deadline = Date.now() + timeoutMs;
++  let lastError = null;
++
++  while (Date.now() < deadline) {
++    try {
++      const response = await fetchImpl(url, {
++        signal: AbortSignal.timeout(attemptTimeoutMs),
++      });
++      if (response.ok) {
++        if (readBody && typeof response.text === "function") {
++          return await response.text();
++        }
++        await response.body?.cancel?.();
++        return;
++      }
++      lastError = `HTTP ${response.status}`;
++      await response.body?.cancel?.();
++    } catch (error) {
++      lastError = String(error);
++    }
++    await sleep(retryDelayMs);
++  }
++
++  throw new Error(
++    `Timed out waiting for ${url}${lastError ? `: ${lastError}` : ""}`,
++  );
++}
++
++export async function waitForExpoBundleReady(url, options = {}) {
++  const html = await waitForHttpReady(url, { ...options, readBody: true });
++  if (typeof html !== "string") return;
++
++  const bundleSource = html.match(/<script[^>]+src=["']([^"']*\.bundle[^"']*)["']/i)?.[1];
++  if (!bundleSource) return;
++
++  await waitForHttpReady(new URL(bundleSource, url).toString(), {
++    ...options,
++    readBody: true,
++    attemptTimeoutMs: Math.max(options.attemptTimeoutMs ?? 1_000, 30_000),
++  });
++}
+diff --git a/packages/desktop/scripts/dev-runner-config.test.mjs b/packages/desktop/scripts/dev-runner-config.test.mjs
+index ca34fe8..f0be6c0 100644
+--- a/packages/desktop/scripts/dev-runner-config.test.mjs
++++ b/packages/desktop/scripts/dev-runner-config.test.mjs
+@@ -4,6 +4,8 @@ import {
+   createElectronSpawnOptions,
+   registerDevRunnerShutdownSignals,
+   resolveChildKillTarget,
++  waitForExpoBundleReady,
++  waitForHttpReady,
+ } from "./dev-runner-config.mjs";
+ 
+ describe("desktop dev process ownership", () => {
+@@ -59,4 +61,66 @@ describe("desktop dev process ownership", () => {
+     listeners.get("SIGHUP")();
+     expect(receivedSignals).toEqual(["SIGTERM"]);
+   });
++
++  test("waits for an HTTP response after the development port opens", async () => {
++    const responses = [
++      { ok: false, status: 503 },
++      { ok: true, status: 200 },
++    ];
++    const requests = [];
++
++    await waitForHttpReady("http://localhost:8082", {
++      fetchImpl: async (url, options) => {
++        requests.push({ url, options });
++        return responses.shift();
++      },
++      retryDelayMs: 0,
++      sleep: async () => {},
++    });
++
++    expect(requests).toHaveLength(2);
++    expect(requests[0].url).toBe("http://localhost:8082");
++    expect(requests[0].options.signal).toBeInstanceOf(AbortSignal);
++  });
++
++  test("reports the last HTTP readiness failure on timeout", async () => {
++    await expect(
++      waitForHttpReady("http://localhost:8082", {
++        fetchImpl: async () => ({ ok: false, status: 503 }),
++        timeoutMs: 1,
++        retryDelayMs: 0,
++        sleep: async () => {},
++      }),
++    ).rejects.toThrow("HTTP 503");
++  });
++
++  test("waits for the Expo HTML and its deferred web bundle", async () => {
++    const requests = [];
++    const responses = [
++      {
++        ok: true,
++        status: 200,
++        text: async () => '<script src="/packages/app/index.ts.bundle?platform=web"></script>',
++      },
++      {
++        ok: true,
++        status: 200,
++        text: async () => "bundle",
++      },
++    ];
++
++    await waitForExpoBundleReady("http://127.0.0.1:8082/", {
++      fetchImpl: async (url) => {
++        requests.push(url);
++        return responses.shift();
++      },
++      retryDelayMs: 0,
++      sleep: async () => {},
++    });
++
++    expect(requests).toEqual([
++      "http://127.0.0.1:8082/",
++      "http://127.0.0.1:8082/packages/app/index.ts.bundle?platform=web",
++    ]);
++  });
+ });
+diff --git a/packages/desktop/scripts/dev-runner.mjs b/packages/desktop/scripts/dev-runner.mjs
+index 852bf7d..1aa9b20 100644
+--- a/packages/desktop/scripts/dev-runner.mjs
++++ b/packages/desktop/scripts/dev-runner.mjs
+@@ -8,6 +8,7 @@ import {
+   createElectronSpawnOptions,
+   registerDevRunnerShutdownSignals,
+   resolveChildKillTarget,
++  waitForExpoBundleReady,
+ } from "./dev-runner-config.mjs";
+ 
+ import { resolveDevElectronArgs } from "./dev-runner-args.mjs";
+@@ -180,6 +181,7 @@ spawnChild("metro", "npx", ["expo", "start", "--port", String(expoPort)], {
+ 
+ try {
+   await waitForPort(expoPort);
++  await waitForExpoBundleReady(expoDevUrl);
+ } catch (error) {
+   console.error(`[dev] ${error.message}`);
+   exitCode = 1;
+diff --git a/packages/desktop/src/main.ts b/packages/desktop/src/main.ts
+index fe9c87e..ae48da5 100644
+--- a/packages/desktop/src/main.ts
++++ b/packages/desktop/src/main.ts
+@@ -107,6 +107,35 @@ const UPDATE_QUIT_DEADLINE_MS = 5_000;
+ const pendingBrowserWindowOpenRequests = new PendingBrowserWindowOpenRequests();
+ const agentNavigationInbox = new AgentNavigationInbox();
+ 
++function isTransientDevelopmentLoadError(error: unknown): boolean {
++  const message = error instanceof Error ? error.message : String(error);
++  return /ERR_(FAILED|CONNECTION_REFUSED|CONNECTION_RESET|TIMED_OUT)/.test(message);
++}
++
++async function loadDevelopmentUrlWithRetry(
++  window: BrowserWindow,
++  url: string,
++  maxAttempts = 3,
++): Promise<void> {
++  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
++    try {
++      await window.loadURL(url);
++      return;
++    } catch (error) {
++      if (attempt >= maxAttempts || !isTransientDevelopmentLoadError(error)) {
++        throw error;
++      }
++      log.warn("[window] development server load failed; retrying", {
++        attempt,
++        maxAttempts,
++        url,
++        error,
++      });
++      await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
++    }
++  }
++}
++
+ // A second-instance launch can arrive before the packaged protocol handler,
+ // IPC handlers, and first window exist. Wait for full bootstrap, not just
+ // app.whenReady(), before delivering navigation to the renderer.
+@@ -838,7 +867,7 @@ async function createWindow(
+     const initialUrl = options.initialRoute
+       ? new URL(options.initialRoute, `${DEV_SERVER_URL}/`).toString()
+       : DEV_SERVER_URL;
+-    await mainWindow.loadURL(initialUrl);
++    await loadDevelopmentUrlWithRetry(mainWindow, initialUrl);
+     return mainWindow;
+   }
+ 
+diff --git a/packages/server/src/server/daemon-config-store.test.ts b/packages/server/src/server/daemon-config-store.test.ts
+index c79bb45..7c5d3c9 100644
+--- a/packages/server/src/server/daemon-config-store.test.ts
++++ b/packages/server/src/server/daemon-config-store.test.ts
+@@ -3,7 +3,11 @@ import { tmpdir } from "node:os";
+ import path from "node:path";
+ import { afterEach, describe, expect, test } from "vitest";
+ 
+-import { DaemonConfigStore, applyMutableProviderConfigToOverrides } from "./daemon-config-store.js";
++import {
++  DaemonConfigRevisionConflictError,
++  DaemonConfigStore,
++  applyMutableProviderConfigToOverrides,
++} from "./daemon-config-store.js";
+ import { loadPersistedConfig } from "./persisted-config.js";
+ import type { PersistedConfig } from "./persisted-config.js";
+ import type { MutableDaemonConfig } from "@getpaseo/protocol/messages";
+@@ -121,6 +125,65 @@ describe("DaemonConfigStore", () => {
+     expect(loadPersistedConfig(paseoHome).daemon?.relay?.enabled).toBe(true);
+   });
+ 
++  test("rejects a stale revision without changing live or persisted config", () => {
++    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
++    tempDirs.push(paseoHome);
++    const store = new DaemonConfigStore(paseoHome, {
++      relay: { enabled: false },
++      mcp: { injectIntoAgents: false },
++      browserTools: { enabled: false },
++      providers: {},
++      metadataGeneration: { providers: [] },
++      autoArchiveAfterMerge: false,
++      enableTerminalAgentHooks: false,
++      appendSystemPrompt: "",
++    });
++
++    const staleRevision = store.getRevision();
++    store.patch({ appendSystemPrompt: "first" }, staleRevision);
++    const currentRevision = store.getRevision();
++    const persistedBefore = loadPersistedConfig(paseoHome);
++
++    expect(() => store.patch({ appendSystemPrompt: "stale" }, staleRevision)).toThrow(
++      DaemonConfigRevisionConflictError,
++    );
++    try {
++      store.patch({ appendSystemPrompt: "stale" }, staleRevision);
++    } catch (error) {
++      expect(error).toMatchObject({
++        expectedRevision: staleRevision,
++        currentRevision,
++      });
++    }
++
++    expect(store.get().appendSystemPrompt).toBe("first");
++    expect(loadPersistedConfig(paseoHome)).toEqual(persistedBefore);
++    expect(store.getRevision()).toBe(currentRevision);
++  });
++
++  test("accepts a matching revision and persists the write", () => {
++    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
++    tempDirs.push(paseoHome);
++    const store = new DaemonConfigStore(paseoHome, {
++      relay: { enabled: false },
++      mcp: { injectIntoAgents: false },
++      browserTools: { enabled: false },
++      providers: {},
++      metadataGeneration: { providers: [] },
++      autoArchiveAfterMerge: false,
++      enableTerminalAgentHooks: false,
++      appendSystemPrompt: "",
++    });
++
++    const matchingRevision = store.getRevision();
++    const next = store.patch({ appendSystemPrompt: "accepted" }, matchingRevision);
++
++    expect(next.appendSystemPrompt).toBe("accepted");
++    expect(store.get().appendSystemPrompt).toBe("accepted");
++    expect(loadPersistedConfig(paseoHome).daemon?.appendSystemPrompt).toBe("accepted");
++    expect(store.getRevision()).not.toBe(matchingRevision);
++  });
++
+   test("patch round-trips agent profiles through the strictly-parsed persisted config", () => {
+     const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+     tempDirs.push(paseoHome);
+@@ -265,16 +328,42 @@ describe("DaemonConfigStore", () => {
+       },
+     });
+     let nestedPatchApplied = false;
+-    store.onChange((config) => {
++    let outerRevision: string | undefined;
++    const notifications: Array<{
++      appendSystemPrompt: string;
++      autoArchiveAfterMerge: boolean;
++      revision: string;
++    }> = [];
++    store.onChange((config, details) => {
+       if (nestedPatchApplied || config.appendSystemPrompt !== "outer") return;
++      outerRevision = details.revision;
+       nestedPatchApplied = true;
+       store.patch({ autoArchiveAfterMerge: true });
+     });
++    store.onChange((config, details) => {
++      notifications.push({
++        appendSystemPrompt: config.appendSystemPrompt,
++        autoArchiveAfterMerge: config.autoArchiveAfterMerge,
++        revision: details.revision,
++      });
++    });
+ 
+     store.patch({ appendSystemPrompt: "outer" });
+ 
+     expect(store.get().appendSystemPrompt).toBe("outer");
+     expect(store.get().autoArchiveAfterMerge).toBe(true);
++    expect(notifications).toHaveLength(2);
++    expect(notifications[0]).toMatchObject({
++      appendSystemPrompt: "outer",
++      autoArchiveAfterMerge: true,
++      revision: store.getRevision(),
++    });
++    expect(notifications[1]).toMatchObject({
++      appendSystemPrompt: "outer",
++      autoArchiveAfterMerge: false,
++      revision: outerRevision,
++    });
++    expect(notifications[0].revision).not.toBe(notifications[1].revision);
+     expect(store.reload()).toEqual({
+       appliedPaths: [],
+       restartRequiredPaths: [],
+@@ -1314,4 +1403,40 @@ describe("DaemonConfigStore reload", () => {
+       overrideControlledPaths: [],
+     });
+   });
++
++  test("advances revision when reload changes the resolved live config", () => {
++    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-reload-"));
++    tempDirs.push(paseoHome);
++    const persisted = loadPersistedConfig(paseoHome);
++    const initial = reloadableConfig(persisted);
++    const store = new DaemonConfigStore(paseoHome, initial, undefined, {
++      reloadSource: {
++        resolve: () => ({
++          mutable: {
++            ...initial,
++            appendSystemPrompt: "resolved-by-source",
++          },
++          overrideControlledPaths: [],
++        }),
++      },
++    });
++    const beforeRevision = store.getRevision();
++    const notifications: Array<{ prompt: string; revision: string }> = [];
++    store.onChange((config, details) => {
++      notifications.push({
++        prompt: config.appendSystemPrompt,
++        revision: details.revision,
++      });
++    });
++
++    expect(store.reload()).toEqual({
++      appliedPaths: ["daemon.appendSystemPrompt"],
++      restartRequiredPaths: [],
++      overrideControlledPaths: [],
++    });
++    expect(store.getRevision()).not.toBe(beforeRevision);
++    expect(notifications).toEqual([
++      { prompt: "resolved-by-source", revision: store.getRevision() },
++    ]);
++  });
+ });
+diff --git a/packages/server/src/server/daemon-config-store.ts b/packages/server/src/server/daemon-config-store.ts
+index 730c0b1..0bebc20 100644
+--- a/packages/server/src/server/daemon-config-store.ts
++++ b/packages/server/src/server/daemon-config-store.ts
+@@ -43,6 +43,8 @@ interface LoggerLike {
+ 
+ export interface DaemonConfigChangeDetails {
+   removedProviders: readonly string[];
++  /** Revision assigned to the committed snapshot being reported. */
++  revision: string;
+ }
+ 
+ export interface DaemonConfigReloadResult {
+@@ -56,7 +58,9 @@ export class DaemonConfigRevisionConflictError extends Error {
+   public readonly currentRevision: string;
+ 
+   constructor(expectedRevision: string, currentRevision: string) {
+-    super("Daemon configuration changed on another client. Reload the latest configuration and retry.");
++    super(
++      "Daemon configuration changed on another client. Reload the latest configuration and retry.",
++    );
+     this.name = "DaemonConfigRevisionConflictError";
+     this.expectedRevision = expectedRevision;
+     this.currentRevision = currentRevision;
+@@ -384,10 +388,7 @@ export class DaemonConfigStore {
+     return `${this.revisionNamespace}:${this.revisionGeneration}`;
+   }
+ 
+-  public patch(
+-    partial: MutableDaemonConfigPatch,
+-    expectedRevision?: string,
+-  ): MutableDaemonConfig {
++  public patch(partial: MutableDaemonConfigPatch, expectedRevision?: string): MutableDaemonConfig {
+     this.assertExpectedRevision(expectedRevision);
+     const parsedPatch = pickSupportedPatchFields(MutableDaemonConfigPatchSchema.parse(partial));
+     assertProtectedProviderPatch(parsedPatch);
+@@ -442,7 +443,7 @@ export class DaemonConfigStore {
+     this.lastKnownPersisted = knownNext;
+     this.advanceRevision();
+     try {
+-      this.applyReplacement(next, { removedProviders });
++      this.applyReplacement(next, { removedProviders, revision: this.getRevision() });
+     } catch (error) {
+       this.lastKnownPersisted = previousLastKnownPersisted;
+       this.revisionGeneration = previousRevisionGeneration;
+@@ -499,12 +500,13 @@ export class DaemonConfigStore {
+     const removedProviders = Object.keys(this.current.providers).filter(
+       (provider) => !(provider in desired.providers),
+     );
++    const liveConfigChanged = !isEqualValue(this.current, desired) || removedProviders.length > 0;
+     const previousLastKnownPersisted = this.lastKnownPersisted;
+     const previousRevisionGeneration = this.revisionGeneration;
+     this.lastKnownPersisted = persisted;
+-    if (persistedChanged) this.advanceRevision();
++    if (persistedChanged || liveConfigChanged) this.advanceRevision();
+     try {
+-      this.applyReplacement(desired, { removedProviders });
++      this.applyReplacement(desired, { removedProviders, revision: this.getRevision() });
+     } catch (error) {
+       this.lastKnownPersisted = previousLastKnownPersisted;
+       this.revisionGeneration = previousRevisionGeneration;
+diff --git a/packages/server/src/server/session.test.ts b/packages/server/src/server/session.test.ts
+index 54e4a9e..5634fbb 100644
+--- a/packages/server/src/server/session.test.ts
++++ b/packages/server/src/server/session.test.ts
+@@ -43,6 +43,7 @@ import {
+   createProviderSnapshotManagerStub,
+ } from "./test-utils/session-stubs.js";
+ import { isPlatform } from "../test-utils/platform.js";
++import { DaemonConfigRevisionConflictError } from "./daemon-config-store.js";
+ import {
+   GitHubAuthenticationError,
+   GitHubCliMissingError,
+@@ -324,6 +325,7 @@ interface SessionForTestOptions {
+   pluginRuntime?: SessionOptions["pluginRuntime"];
+   orchestrationSkills?: SessionOptions["orchestrationSkills"];
+   workspaceLabelService?: WorkspaceLabelService;
++  daemonConfigStore?: Partial<SessionOptions["daemonConfigStore"]>;
+ }
+ 
+ function createSessionForTest(options: SessionForTestOptions = {}): Session {
+@@ -408,7 +410,9 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
+         mcp: { injectIntoAgents: false },
+         providers: {},
+       })),
++      getRevision: vi.fn(() => "test-revision-1"),
+       onChange: vi.fn(() => () => {}),
++      ...options.daemonConfigStore,
+     }),
+     pluginRuntime: options.pluginRuntime,
+     orchestrationSkills: options.orchestrationSkills,
+@@ -431,6 +435,116 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
+   return new Session(sessionOptions);
+ }
+ 
++describe("daemon config revision RPC", () => {
++  const baseConfig = {
++    mcp: { injectIntoAgents: false },
++    providers: {},
++    browserTools: { enabled: false },
++    metadataGeneration: { providers: [] },
++    autoArchiveAfterMerge: false,
++    enableTerminalAgentHooks: false,
++    appendSystemPrompt: "",
++  };
++
++  test("returns the current revision when reading daemon config", async () => {
++    const messages: SessionOutboundMessage[] = [];
++    const getRevision = vi.fn(() => "revision-1");
++    const session = createSessionForTest({
++      messages,
++      daemonConfigStore: {
++        get: vi.fn(() => baseConfig),
++        getRevision,
++      },
++    });
++
++    await session.handleMessage({
++      type: "get_daemon_config_request",
++      requestId: "config-get-revision",
++    });
++
++    expect(messages).toEqual([
++      {
++        type: "get_daemon_config_response",
++        payload: {
++          requestId: "config-get-revision",
++          config: baseConfig,
++          revision: "revision-1",
++        },
++      },
++    ]);
++    expect(getRevision).toHaveBeenCalledTimes(1);
++  });
++
++  test("passes expectedRevision through and returns the next revision after a write", async () => {
++    const messages: SessionOutboundMessage[] = [];
++    const nextConfig = { ...baseConfig, appendSystemPrompt: "updated" };
++    const patch = vi.fn(() => nextConfig);
++    const getRevision = vi.fn(() => "revision-2");
++    const session = createSessionForTest({
++      messages,
++      daemonConfigStore: {
++        get: vi.fn(() => nextConfig),
++        getRevision,
++        patch,
++      },
++    });
++
++    await session.handleMessage({
++      type: "set_daemon_config_request",
++      requestId: "config-set-revision",
++      config: { appendSystemPrompt: "updated" },
++      expectedRevision: "revision-1",
++    });
++
++    expect(patch).toHaveBeenCalledWith({ appendSystemPrompt: "updated" }, "revision-1");
++    expect(messages).toEqual([
++      {
++        type: "set_daemon_config_response",
++        payload: {
++          requestId: "config-set-revision",
++          config: nextConfig,
++          revision: "revision-2",
++        },
++      },
++    ]);
++  });
++
++  test("returns the authoritative snapshot for a revision conflict", async () => {
++    const messages: SessionOutboundMessage[] = [];
++    const currentConfig = { ...baseConfig, appendSystemPrompt: "other-client" };
++    const patch = vi.fn(() => {
++      throw new DaemonConfigRevisionConflictError("revision-1", "revision-2");
++    });
++    const session = createSessionForTest({
++      messages,
++      daemonConfigStore: {
++        get: vi.fn(() => currentConfig),
++        getRevision: vi.fn(() => "revision-2"),
++        patch,
++      },
++    });
++
++    await session.handleMessage({
++      type: "set_daemon_config_request",
++      requestId: "config-set-conflict",
++      config: { appendSystemPrompt: "stale-client" },
++      expectedRevision: "revision-1",
++    });
++
++    expect(messages).toEqual([
++      {
++        type: "set_daemon_config_response",
++        payload: {
++          requestId: "config-set-conflict",
++          config: currentConfig,
++          revision: "revision-2",
++          conflict: true,
++        },
++      },
++    ]);
++  });
++});
++
+ test("routes host-scoped agent skills requests through the daemon owner", async () => {
+   const messages: SessionOutboundMessage[] = [];
+   const status = {
+diff --git a/packages/server/src/server/session.ts b/packages/server/src/server/session.ts
+index 333cad8..d0e6e08 100644
+--- a/packages/server/src/server/session.ts
++++ b/packages/server/src/server/session.ts
+@@ -58,7 +58,10 @@ import {
+   createWorkspaceScriptsService,
+   type WorkspaceScriptsService,
+ } from "./session/workspace-scripts/workspace-scripts-service.js";
+-import type { DaemonConfigStore } from "./daemon-config-store.js";
++import {
++  DaemonConfigRevisionConflictError,
++  type DaemonConfigStore,
++} from "./daemon-config-store.js";
+ import { toClientDaemonConfig } from "./daemon-config-client-view.js";
+ import { loadPersistedConfig } from "./persisted-config.js";
+ import { releaseWorkspaceServicePortPlan } from "./workspace-service-port-registry.js";
+@@ -278,6 +281,13 @@ function errorToFriendlyMessage(error: unknown): string {
+   return "Unknown error";
+ }
+ 
++// Keep sessions compatible with test doubles and daemons that predate the
++// revision-aware config store. New stores always expose getRevision().
++function readDaemonConfigRevision(store: DaemonConfigStore): string | undefined {
++  const candidate = store as DaemonConfigStore & { getRevision?: () => string };
++  return typeof candidate.getRevision === "function" ? candidate.getRevision() : undefined;
++}
++
+ function resolveSubscriptionId(
+   subscribe: unknown,
+   requestedSubscriptionId: string | undefined,
+@@ -2280,13 +2290,7 @@ export class Session {
+       case "agent.config.apply.request":
+         return this.agentConfigSession.handleAgentConfigApplyRequest(msg);
+       case "get_daemon_config_request":
+-        this.emit({
+-          type: "get_daemon_config_response",
+-          payload: {
+-            requestId: msg.requestId,
+-            config: toClientDaemonConfig(this.daemonConfigStore.get()),
+-          },
+-        });
++        this.handleGetDaemonConfigRequest(msg);
+         return undefined;
+       case "daemon.get_status.request":
+         return this.daemonSession.handleGetStatusRequest(msg);
+@@ -2304,14 +2308,7 @@ export class Session {
+       case "daemon.update.request":
+         return this.daemonSession.handleUpdateRequest(msg);
+       case "set_daemon_config_request": {
+-        const config = this.daemonConfigStore.patch(msg.config);
+-        this.emit({
+-          type: "set_daemon_config_response",
+-          payload: {
+-            requestId: msg.requestId,
+-            config: toClientDaemonConfig(config),
+-          },
+-        });
++        this.handleSetDaemonConfigRequest(msg);
+         return undefined;
+       }
+       case "read_project_config_request":
+@@ -2323,6 +2320,55 @@ export class Session {
+     }
+   }
+ 
++  private handleGetDaemonConfigRequest(
++    msg: Extract<SessionInboundMessage, { type: "get_daemon_config_request" }>,
++  ): void {
++    const revision = readDaemonConfigRevision(this.daemonConfigStore);
++    this.emit({
++      type: "get_daemon_config_response",
++      payload: {
++        requestId: msg.requestId,
++        config: toClientDaemonConfig(this.daemonConfigStore.get()),
++        ...(revision !== undefined ? { revision } : {}),
++      },
++    });
++  }
++
++  private handleSetDaemonConfigRequest(
++    msg: Extract<SessionInboundMessage, { type: "set_daemon_config_request" }>,
++  ): void {
++    try {
++      const config = this.daemonConfigStore.patch(msg.config, msg.expectedRevision);
++      const revision = readDaemonConfigRevision(this.daemonConfigStore);
++      this.emit({
++        type: "set_daemon_config_response",
++        payload: {
++          requestId: msg.requestId,
++          config: toClientDaemonConfig(config),
++          ...(revision !== undefined ? { revision } : {}),
++        },
++      });
++    } catch (error) {
++      if (!(error instanceof DaemonConfigRevisionConflictError)) {
++        throw error;
++      }
++
++      // Return the authoritative snapshot so the client can refresh its
++      // editor without turning a normal compare-and-swap miss into a
++      // generic RPC failure/activity error.
++      const revision = readDaemonConfigRevision(this.daemonConfigStore);
++      this.emit({
++        type: "set_daemon_config_response",
++        payload: {
++          requestId: msg.requestId,
++          config: toClientDaemonConfig(this.daemonConfigStore.get()),
++          ...(revision !== undefined ? { revision } : {}),
++          conflict: true,
++        },
++      });
++    }
++  }
++
+   // eslint-disable-next-line complexity
+   private dispatchCheckoutMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+     switch (msg.type) {
+diff --git a/packages/server/src/server/websocket-server.notifications.test.ts b/packages/server/src/server/websocket-server.notifications.test.ts
+index 9443187..04cea03 100644
+--- a/packages/server/src/server/websocket-server.notifications.test.ts
++++ b/packages/server/src/server/websocket-server.notifications.test.ts
+@@ -4,7 +4,7 @@ import type pino from "pino";
+ import type { AgentManager } from "./agent/agent-manager.js";
+ import type { AgentStorage } from "./agent/agent-storage.js";
+ import type { DownloadTokenStore } from "./file-download/token-store.js";
+-import type { DaemonConfigStore } from "./daemon-config-store.js";
++import type { DaemonConfigStore, MutableDaemonConfig } from "./daemon-config-store.js";
+ import type { ScheduleService } from "./schedule/service.js";
+ import type { CheckoutDiffManager } from "./checkout-diff-manager.js";
+ import { asInternals, createStub } from "./test-utils/class-mocks.js";
+@@ -45,6 +45,7 @@ import { VoiceAssistantWebSocketServer } from "./websocket-server.js";
+ 
+ interface WebSocketServerInternals {
+   sessions: Map<unknown, unknown>;
++  createDaemonConfigChangedMessage(config: unknown, revision?: string): unknown;
+   broadcastAgentAttention(params: {
+     agentId: string;
+     reason: string;
+@@ -83,6 +84,8 @@ class RecordingPushNotificationSender implements PushNotificationSender {
+ 
+ function createServer(agentManagerOverrides?: Record<string, unknown>) {
+   const pushNotifications = new RecordingPushNotificationSender();
++  type DaemonConfigChangeListener = Parameters<DaemonConfigStore["onChange"]>[0];
++  let daemonConfigChangeListener: DaemonConfigChangeListener | undefined;
+   const agentManager = {
+     subscribe: vi.fn(() => () => {}),
+     setAgentAttentionCallback: vi.fn(),
+@@ -101,7 +104,13 @@ function createServer(agentManagerOverrides?: Record<string, unknown>) {
+   };
+   const daemonConfigStore = {
+     onApply: vi.fn(() => () => {}),
+-    onChange: vi.fn(() => () => {}),
++    onChange: vi.fn((listener: DaemonConfigChangeListener) => {
++      daemonConfigChangeListener = listener;
++      return () => {
++        daemonConfigChangeListener = undefined;
++      };
++    }),
++    getRevision: vi.fn(() => "revision-broadcast"),
+   };
+ 
+   const server = new VoiceAssistantWebSocketServer(
+@@ -148,7 +157,14 @@ function createServer(agentManagerOverrides?: Record<string, unknown>) {
+     createProviderSnapshotManagerStub().manager,
+   );
+ 
+-  return { server, agentManager, pushNotifications };
++  return {
++    server,
++    agentManager,
++    pushNotifications,
++    emitDaemonConfigChange(config: MutableDaemonConfig, revision: string): void {
++      daemonConfigChangeListener?.(config, { removedProviders: [], revision });
++    },
++  };
+ }
+ 
+ function createOpenSocket() {
+@@ -216,6 +232,52 @@ describe("VoiceAssistantWebSocketServer notification payloads", () => {
+     vi.clearAllMocks();
+   });
+ 
++  it("includes the current daemon config revision in change broadcasts", () => {
++    const { server } = createServer();
++    const message = asInternals<WebSocketServerInternals>(server).createDaemonConfigChangedMessage({
++      mcp: { injectIntoAgents: false },
++      providers: {},
++    });
++
++    expect(message).toMatchObject({
++      type: "session",
++      message: {
++        type: "status",
++        payload: {
++          status: "daemon_config_changed",
++          revision: "revision-broadcast",
++        },
++      },
++    });
++  });
++
++  it("broadcasts the revision captured for the changed snapshot", () => {
++    const { server, emitDaemonConfigChange } = createServer();
++    const ws = connectClient(server, null);
++
++    emitDaemonConfigChange(
++      {
++        mcp: { injectIntoAgents: false },
++        providers: {},
++      } as MutableDaemonConfig,
++      "revision-captured",
++    );
++
++    const rawMessage = ws.send.mock.calls[0]?.[0];
++    expect(typeof rawMessage).toBe("string");
++    if (typeof rawMessage !== "string") throw new Error("Expected string WebSocket frame");
++    expect(JSON.parse(rawMessage)).toMatchObject({
++      type: "session",
++      message: {
++        type: "status",
++        payload: {
++          status: "daemon_config_changed",
++          revision: "revision-captured",
++        },
++      },
++    });
++  });
++
+   it("uses assistant preview text for push notifications with markdown removed", async () => {
+     const getLastAssistantMessage = vi.fn(
+       async () => "**Done**. Updated `README.md` and [link](https://example.com).",
+diff --git a/packages/server/src/server/websocket-server.relay-reconnect.test.ts b/packages/server/src/server/websocket-server.relay-reconnect.test.ts
+index 08d85b9..983bbea 100644
+--- a/packages/server/src/server/websocket-server.relay-reconnect.test.ts
++++ b/packages/server/src/server/websocket-server.relay-reconnect.test.ts
+@@ -979,6 +979,7 @@ describe("relay external socket reconnect behavior", () => {
+     expect(serverInfo.features?.canonicalSubmittedPrompts).toBe(true);
+     expect(serverInfo.features?.providersSnapshotCwd).toBe(true);
+     expect(serverInfo.features?.pluginLogs).toBe(true);
++    expect(serverInfo.features?.daemonConfigRevision).toBe(true);
+     expect(serverInfo.features?.["terminal-input-mode-replay"]).toBe(true);
+     expect(serverInfo.features?.["terminal-size-ownership"]).toBe(true);
+     expect(serverInfo.features?.agentTurnIdentity).toBeUndefined();
+diff --git a/packages/server/src/server/websocket-server.ts b/packages/server/src/server/websocket-server.ts
+index 290d473..f73fecb 100644
+--- a/packages/server/src/server/websocket-server.ts
++++ b/packages/server/src/server/websocket-server.ts
+@@ -508,6 +508,13 @@ const WS_CLOSE_SERVER_SHUTDOWN = 1001;
+ const WS_PROTOCOL_VERSION = 1;
+ const WS_RUNTIME_METRICS_FLUSH_MS = 30_000;
+ 
++// Keep websocket test doubles and older injected stores compatible while the
++// revision-aware config RPC rolls out. Production stores always implement it.
++function readDaemonConfigRevision(store: DaemonConfigStore): string | undefined {
++  const candidate = store as DaemonConfigStore & { getRevision?: () => string };
++  return typeof candidate.getRevision === "function" ? candidate.getRevision() : undefined;
++}
++
+ export class MissingDaemonVersionError extends Error {
+   constructor() {
+     super("VoiceAssistantWebSocketServer requires a non-empty daemonVersion.");
+@@ -717,8 +724,8 @@ export class VoiceAssistantWebSocketServer {
+       providerSnapshotManager: this.providerSnapshotManager,
+       updateProviderRegistry: (state) => this.agentManager.updateProviderRegistry(state),
+     });
+-    const unsubscribeChange = this.daemonConfigStore.onChange((config) => {
+-      this.broadcastDaemonConfigChanged(config);
++    const unsubscribeChange = this.daemonConfigStore.onChange((config, details) => {
++      this.broadcastDaemonConfigChanged(config, details?.revision);
+     });
+     this.unsubscribeDaemonConfigChange = () => {
+       unsubscribeProviderConfig();
+@@ -1669,6 +1676,8 @@ export class VoiceAssistantWebSocketServer {
+         ...(this.advertiseDaemonStatusRpc ? { daemonStatusRpc: true } : {}),
+         // COMPAT(daemonConfigReload): added in v0.4.0, remove gate after 2027-02-14.
+         daemonConfigReload: true,
++        // COMPAT(daemonConfigRevision): added in v0.5.0, remove after 2027-08-28.
++        daemonConfigRevision: true,
+         // COMPAT(relayConfig): added in v0.2.6, remove gate after 2027-01-31.
+         ...(this.advertiseRelayConfig ? { relayConfig: true } : {}),
+         // COMPAT(pushTokenRevocation): added in v0.3.2, remove gate after 2027-02-10.
+@@ -1779,12 +1788,17 @@ export class VoiceAssistantWebSocketServer {
+     };
+   }
+ 
+-  private createDaemonConfigChangedMessage(config: MutableDaemonConfig): WSOutboundMessage {
++  private createDaemonConfigChangedMessage(
++    config: MutableDaemonConfig,
++    revisionOverride?: string,
++  ): WSOutboundMessage {
++    const revision = revisionOverride ?? readDaemonConfigRevision(this.daemonConfigStore);
+     return wrapSessionMessage({
+       type: "status",
+       payload: {
+         status: "daemon_config_changed",
+         config: toClientDaemonConfig(config),
++        ...(revision !== undefined ? { revision } : {}),
+       },
+     });
+   }
+@@ -1793,8 +1807,8 @@ export class VoiceAssistantWebSocketServer {
+     this.broadcast(this.createServerInfoMessage());
+   }
+ 
+-  private broadcastDaemonConfigChanged(config: MutableDaemonConfig): void {
+-    this.broadcast(this.createDaemonConfigChangedMessage(config));
++  private broadcastDaemonConfigChanged(config: MutableDaemonConfig, revision?: string): void {
++    this.broadcast(this.createDaemonConfigChangedMessage(config, revision));
+   }
+ 
+   private bindSocketHandlers(ws: WebSocketLike): void {
+-- 
+2.55.0
+

@@ -1,216 +1,113 @@
-# 版本发布快速参考
+# 版本控制快速参考
 
-**快速查找版本信息和操作命令**
+修订日期：2026-08-29
 
----
+## 当前状态
 
-## 📌 当前版本
+| 项目 | 来源 | 当前状态 |
+| --- | --- | --- |
+| 父仓库 release tag | git tag | 尚无 |
+| Rust bridge | crates/codex-bridge/Cargo.toml | 0.1.0 |
+| OMP primitives | crates/omp-primitives/Cargo.toml | 0.1.0 |
+| Paseo package | upstream/paseo/package.json | 0.5.0 |
+| Paseo gitlink | UPSTREAMS.toml | 84acf5a65897a0c8cece2d0bdb323fe73edd03a4 |
+| Codex CLI | UPSTREAMS.toml | 0.149.0 |
 
-| 项目 | 版本 | 状态 | 发布日期 |
-|------|------|------|----------|
-| 主项目 | `v0.6.0-alpha.1` | ✅ 已发布 | 2026-08-24 |
-| Rust Bridge | `0.6.0` | ✅ 稳定 | 2026-08-24 |
-| Paseo Fork | `0.5.0` | ✅ 稳定 | 2026-08-24 |
+父仓库首次提交已完成；可访问的 Paseo fork 尚待配置。不要把工作区日期或文档
+中的路线图当成 release 证据；以 STATUS.md 和 docs/PROGRESS.md 的命令结果为准。
 
----
+## 常用查询
 
-## 🗺️ 版本路线图一览
+~~~bash
+git log --oneline -3
+git tag -l 'v*' | sort -V
+git describe --tags --always
+git submodule status
+cargo metadata --no-deps --format-version 1
+node -p 'require("./upstream/paseo/package.json").version'
+~~~
 
-```
-v0.5.0 ━━━━━━━━━━━━━━━━━━━━━━ ✅ 基础完成
-  │
-v0.6.0-alpha.1 ━━━━━━━━━━━━━ ✅ 自定义 API
-  │
-v0.7.0 ━━━━━━━━━━━━━━━━━━━━━ 🚧 移动端验证 (Aug 25-30)
-  ├─ v0.7.0-alpha.1: E2EE Relay
-  ├─ v0.7.0-alpha.2: 断线重连
-  └─ v0.7.0-beta.1: UI 完善
-  │
-v0.8.0 ━━━━━━━━━━━━━━━━━━━━━ 🔜 配置 UI (Sep 1-3)
-  ├─ v0.8.0-alpha.1: Web UI
-  └─ v0.8.0-alpha.2: 移动端同步
-  │
-v0.9.0 ━━━━━━━━━━━━━━━━━━━━━ 🔮 高级功能 (Sep 4-7)
-  ├─ v0.9.0-alpha.1: 热重载
-  ├─ v0.9.0-alpha.2: 健康检查
-  └─ v0.9.0-alpha.3: 批量管理
-  │
-v1.0.0-rc.1 ━━━━━━━━━━━━━━━━ 🚀 候选版本 (Sep 9)
-  │
-v1.0.0 ━━━━━━━━━━━━━━━━━━━━━ 🎉 正式发布 (Sep 10)
-```
+## 版本命令
 
----
+~~~bash
+# 首次 release 显式指定版本
+RELEASE_CONFIRM=1 ./scripts/release.sh alpha 0.1.0-alpha.1
 
-## ⚡ 常用命令
+# 已有父仓库 tag 后按类型递增
+RELEASE_CONFIRM=1 ./scripts/release.sh patch
+RELEASE_CONFIRM=1 ./scripts/release.sh minor
+RELEASE_CONFIRM=1 ./scripts/release.sh major
+~~~
 
-### 版本信息查询
+release.sh 要求父仓库和子模块工作树干净，运行 Rust 与 Paseo 定向测试和构建，
+只创建父仓库 CHANGELOG、commit 和 tag。它不会修改 Paseo package，也不会自动
+推送。配置 remote 后若确实需要推送，显式设置 RELEASE_PUSH=1。
 
-```bash
-# 当前版本
-git describe --tags --abbrev=0
+## 发布前验证
 
-# 所有版本列表
-git tag -l "v*" | sort -V
-
-# 查看版本详情
-git show v0.6.0-alpha.1
-
-# 比较版本差异
-git log --oneline v0.5.0..v0.6.0-alpha.1
-git diff v0.5.0..v0.6.0-alpha.1 -- docs/
-```
-
-### 版本切换
-
-```bash
-# 切换到特定版本
-git checkout v0.6.0-alpha.1
-
-# 创建基于特定版本的分支
-git checkout -b hotfix/fix-issue v1.0.0
-
-# 回到最新开发版
-git checkout develop
-```
-
-### 发布新版本
-
-```bash
-# Alpha 版本（功能开发）
-./scripts/release.sh alpha
-
-# Beta 版本（测试阶段）
-./scripts/release.sh beta
-
-# RC 版本（候选发布）
-./scripts/release.sh rc
-
-# 正式版本
-./scripts/release.sh release
-```
-
----
-
-## 📦 版本标签说明
-
-| 标签格式 | 含义 | 稳定性 | 示例 |
-|---------|------|--------|------|
-| `v0.x.y` | 开发版本 | 低-中 | v0.5.0 |
-| `v0.x.y-alpha.n` | 内部测试 | 低 | v0.6.0-alpha.1 |
-| `v0.x.y-beta.n` | 公开测试 | 中 | v0.7.0-beta.1 |
-| `v1.x.y-rc.n` | 候选发布 | 高 | v1.0.0-rc.1 |
-| `v1.x.y` | 正式发布 | 最高 | v1.0.0 |
-
----
-
-## 🔄 升级路径
-
-### 从 v0.5.0 升级到 v0.6.0-alpha.1
-
-```bash
-# 1. 备份配置
-cp .paseo-dev/config.json .paseo-dev/config.json.backup
-
-# 2. 切换版本
-git checkout v0.6.0-alpha.1
-
-# 3. 更新依赖
-cd upstream/paseo && npm install && cd ../..
-
-# 4. 重新构建
-cd upstream/paseo && npm run build:server && cd ../..
-
-# 5. 验证
+~~~bash
+git diff --check
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --locked
+cd upstream/paseo
+npm ci
+npm run format:check
+npm run lint
+npx vitest run packages/server/src/server/bootstrap.smoke.test.ts packages/server/src/server/agent/provider-snapshot-manager.test.ts --maxWorkers=1
+npm run build:server
+npm run build:daemon-web-ui
+cd ../..
+./scripts/verify-rust.sh
 ./scripts/verify-custom-providers.sh
+./scripts/verify-relay.sh
+~~~
 
-# 6. 启动
-./scripts/start-harness-workbench.sh
-```
+设备、额度、浏览器或真实 Codex 凭证缺失时，结果应记录为待验，不得改写为
+通过。
 
-### 回滚到 v0.5.0
+## 当前功能快照
 
-```bash
-# 1. 停止服务
-pkill -f paseo
+| 能力 | Web/Desktop | Android/iOS |
+| --- | --- | --- |
+| Codex bridge、线程和 turn 控制 | 真实 bridge/CLI 路径已验证 | 共享协议，移动端完整路径待验 |
+| Custom provider 配置 | Settings 生命周期和浏览器路径已验证 | 共享 UI，真机生命周期待验 |
+| E2EE relay terminal | Web 本地 Wrangler 路径已验证 | 控制面部分验证，配对/网络切换待验 |
+| Desktop 包装 | 浏览器 tabs 路径已验证 | 不适用 |
+| 配置热更新 | reload 与 snapshot 路径已验证 | 共享协议，真机待验 |
+| CAS 并发、活跃会话连续性 | 待验 | 待验 |
 
-# 2. 切换版本
-git checkout v0.5.0
+## 升级与回滚原则
 
-# 3. 恢复配置（如需要）
-cp .paseo-dev/config.json.backup .paseo-dev/config.json
+1. 在切换父 tag 或子模块 commit 前，归档并提交当前子模块工作区。
+2. 备份 PASEO_HOME/config.json，再切换版本。
+3. 切换后重装依赖并运行上面的定向测试和验证脚本。
+4. 出现问题时使用 git revert，或切换到已验证 tag；同时检查 git submodule status。
+5. 当前没有独立的配置迁移或安装验证脚本，不要调用不存在的脚本名。
 
-# 4. 重新构建
-cd upstream/paseo && npm install && npm run build:server && cd ../..
+## 重要路径
 
-# 5. 启动
-./scripts/start-harness-workbench.sh
-```
+| 路径 | 用途 |
+| --- | --- |
+| UPSTREAMS.toml | Codex、Paseo、OMP 固定输入 |
+| Cargo.toml | Rust workspace 清单（无顶层 version） |
+| docs/VERSION_CONTROL.md | 完整流程和子模块规则 |
+| docs/PROGRESS.md | 实测进度日志 |
+| STATUS.md | 当前阶段和缺口 |
+| .github/workflows/ci.yml | 父仓库 CI |
+| scripts/release.sh | 本地 release commit/tag |
+| scripts/verify-rust.sh | Rust bridge 验证 |
+| scripts/verify-custom-providers.sh | provider 配置契约验证 |
+| scripts/verify-relay.sh | 本地 relay 验证 |
 
----
+## 子模块 pin
 
-## 🏷️ 版本功能对照表
+~~~bash
+git -C upstream/paseo rev-parse HEAD
+grep -n '^revision' UPSTREAMS.toml
+git diff --submodule=log
+~~~
 
-| 功能 | v0.5.0 | v0.6.0 | v0.7.0 | v0.8.0 | v0.9.0 | v1.0.0 |
-|------|--------|--------|--------|--------|--------|--------|
-| Codex 基础 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| 自定义 API | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| 移动端配对 | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ |
-| 配置 UI | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ |
-| 热重载 | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| 健康检查 | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
-
----
-
-## 🐛 已知问题与修复版本
-
-| 问题 | 影响版本 | 修复版本 | Issue |
-|------|----------|----------|-------|
-| 配置需手动编辑 | v0.5.0 - v0.7.0 | v0.8.0 | - |
-| 移动端未测试 | v0.5.0 - v0.6.0 | v0.7.0 | - |
-| 无配置热重载 | v0.5.0 - v0.8.0 | v0.9.0 | - |
-
----
-
-## 📱 平台支持矩阵
-
-| 平台 | v0.5.0 | v0.6.0 | v0.7.0 | v1.0.0 |
-|------|--------|--------|--------|--------|
-| Linux x64 | ✅ | ✅ | ✅ | ✅ |
-| macOS arm64 | ✅ | ✅ | ✅ | ✅ |
-| macOS x64 | ✅ | ✅ | ✅ | ✅ |
-| Windows x64 | ⚠️ | ⚠️ | ✅ | ✅ |
-| Android 8.0+ | ❌ | ❌ | ✅ | ✅ |
-| iOS 14.0+ | ❌ | ❌ | ✅ | ✅ |
-| Web | ✅ | ✅ | ✅ | ✅ |
-
-**图例**：✅ 完全支持 | ⚠️ 部分支持 | ❌ 不支持
-
----
-
-## 📄 重要文件
-
-| 文件 | 用途 |
-|------|------|
-| `CHANGELOG.md` | 详细变更记录 |
-| `docs/VERSION_CONTROL.md` | 完整版本控制文档 |
-| `docs/MASTER_PLAN.md` | 实施计划 |
-| `package.json` | Node.js 版本号 |
-| `Cargo.toml` | Rust 版本号 |
-| `.github/workflows/release.yml` | 自动发布流程 |
-
----
-
-## 🔗 快速链接
-
-- 📚 [完整版本控制文档](VERSION_CONTROL.md)
-- 🗺️ [主实施计划](MASTER_PLAN.md)
-- 🚀 [快速开始](QUICKSTART.md)
-- 📊 [项目状态](../STATUS.md)
-- 🐛 [Issue Tracker](https://github.com/yourorg/codex-remote-workbench/issues)
-- 📦 [Releases](https://github.com/yourorg/codex-remote-workbench/releases)
-
----
-
-**最后更新**：2026-08-24  
-**维护者**：开发团队
+父 workflow 只会检出父提交中记录的 gitlink。Paseo 自身的 CI 位于
+upstream/paseo/.github/workflows/ci.yml，使用 Node 22 并覆盖其 server、desktop、
+app、relay 和 CLI 合约；两者结果分开记录。

@@ -9,7 +9,7 @@
 | 文档 | 描述 | 页数 | 更新日期 |
 |------|------|------|----------|
 | [MASTER_PLAN.md](MASTER_PLAN.md) | ⭐ **完整实施计划（3 周路线图）** | 1000+ | 2026-08-24 |
-| [VERSION_CONTROL.md](VERSION_CONTROL.md) | 🔖 **版本控制与发布规范** | 1000+ | 2026-08-24 |
+| [VERSION_CONTROL.md](VERSION_CONTROL.md) | 🔖 **版本控制与发布规范** | 1000+ | 2026-08-29 |
 | [QUICKSTART.md](QUICKSTART.md) | 🚀 快速开始指南 | 300+ | 2026-08-24 |
 | [CUSTOM_PROVIDERS.md](CUSTOM_PROVIDERS.md) | 🔧 自定义 API 配置指南 | 150+ | 2026-08-24 |
 
@@ -41,7 +41,7 @@
 | 文档 | 用途 |
 |------|------|
 | [PROGRESS.md](PROGRESS.md) | 开发进度日志 |
-| [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) | 阶段 1 实施总结 |
+| [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) | 实现与验证摘要 |
 | [../STATUS.md](../STATUS.md) | 项目状态总览 |
 
 ---
@@ -172,5 +172,5 @@
 ---
 
 **维护者**：开发团队  
-**最后审阅**：2026-08-24  
-**下次审阅**：2026-08-31
+**最后审阅**：2026-08-29  
+**下次审阅**：2026-09-05

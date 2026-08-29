@@ -1,393 +1,102 @@
-# 自定义 API 与移动端改善 - 实施总结
+# Codex Harness Workbench - 实施摘要
 
-**实施日期**：2026-08-24  
-**状态**：阶段 1 完成 ✅
+修订日期：2026-08-29
+文档性质：实现和验证摘要，不是 release 说明
 
----
+## 当前状态
 
-## 📋 已完成工作
+阶段 1 的 Rust bridge 与 Codex 基础链路已完成。阶段 2 的 Web relay terminal
+路径已验收，Android/iOS、Desktop relay、hosted TLS 和部分高级场景仍在验证。
+阶段 3 的 provider 配置 UI、daemon reload 与 snapshot 生命周期已实现；移动真机
+和协议级并发冲突的最终客户端验收仍待完成。协议级 revision/CAS 接线已提交到
+Paseo `84acf5a`；stale expectedRevision 会被拒绝，匹配 revision 的写入会成功。
+权威进度见 STATUS.md 与 docs/PROGRESS.md。
 
-### 1. 核心功能实现
+## Provider 逻辑
 
-#### ✅ 修改 Paseo Provider 管理策略
+当前实现位于 upstream/paseo/packages/server/src/server/bootstrap.ts 和
+packages/server/src/server/agent/provider-snapshot-manager.ts：
 
-**文件**：`upstream/paseo/packages/server/src/server/bootstrap.ts`
+- Codex 始终加入 publishedProviderIds，并作为 requiredProviderIds。
+- 开发模式可额外发布 mock；显式注入的测试 client 只用于内部契约。
+- 启用 custom provider 必须同时具有 enabled=true 和 extends 字段，且由
+  ProviderSnapshotManager 在构建 registry 时动态纳入。
+- reload 会原子地应用 provider 配置；失败时保留旧 snapshot 和 client。
+- Codex 的 required 约束在 daemon 和 Settings UI 两侧生效，不能通过配置停用或删除。
+- provider client view 会剥离 API key 等凭证；relay/移动端只接收允许同步的元数据。
 
-**改动内容**：
-- 新增 `getEnabledCustomProviderIds()` 函数，从配置中提取显式启用的自定义 provider
-- 修改 `publishedProviderIds` 构建逻辑：`Codex（必需）+ 启用的自定义 providers`
-- 保持 `requiredProviderIds` 仅包含 `codex`，确保其不可禁用
-- 添加日志输出，记录实际发布的 provider 列表
+旧文档曾描述一个已删除的启用 provider helper；当前代码不再提供该 API，文档和
+脚本均以 ProviderSnapshotManager 的现行逻辑为准。
 
-**架构保证**：
-- ✅ Codex 仍是必需的核心 runtime，不能被禁用
-- ✅ 自定义 provider 是可选的辅助能力
-- ✅ 必须在配置中显式 `enabled: true` 才会发布
-- ✅ 不违背"Codex 是唯一 harness"的核心原则
+## 已实现的产品路径
 
-#### ✅ 测试验证
+### Rust bridge
 
-所有现有测试通过：
-- `bootstrap.smoke.test.ts`：21/21 passed ✅
-- `provider-snapshot-manager.test.ts`：55/55 passed ✅
-- Server build 成功 ✅
+- Codex app-server 0.149.0 的 initialize、并发 JSON-RPC、乱序 response 路由。
+- server-initiated approval、thread start/resume/fork/archive/unarchive/delete。
+- turn start/steer/interrupt，以及 experimental thread/revert rewind。
+- 有界 replay buffer 与过期 cursor 的 reset_required 语义。
+- OMP pi-walker 仅在 omp-walker feature 下启用，默认关闭。
 
-### 2. 文档与示例
+### Paseo Web/Desktop
 
-#### ✅ 创建完整配置指南
+- Codex required provider 和 OpenAI-compatible、Anthropic-compatible、ACP custom
+  provider 的配置、启停、编辑和删除。
+- Settings 保存后的 daemon reload、snapshot 刷新和进程连续性。
+- 新建 workspace 默认 Codex CLI terminal，并保留 no-alt-screen 参数。
+- Web + packaged daemon + 本地 Wrangler E2EE relay terminal 的创建、订阅、输入/输出、
+  resize 和终止。
+- Desktop browser-tabs 路径已通过真实 Electron 验证；relay-terminal reconnect case
+  仍有 renderer 生命周期失败日志，不能标记完成。
 
-**文件**：`docs/CUSTOM_PROVIDERS.md`（150+ 行）
+### Android/iOS
 
-**内容覆盖**：
-- 配置格式和规则
-- 三种主要场景（OpenAI-compatible、Anthropic-compatible、ACP）
-- 常见第三方服务配置（Z.AI、Alibaba Cloud Qwen）
-- 字段参考表
-- 验证步骤
-- 移动端同步说明
-- 常见问题解答
-- 架构说明
+- Android Maestro provider-form 契约脚本已准备；当前无在线设备。
+- Android relay 控制面曾观察到 offer 注册和 session resume，但扫码/手动配对、多设备、
+  网络切换、聊天/审批/terminal UI 和 iOS 仍待真实客户端验证。
+- API keys 不同步到移动端。
 
-#### ✅ 创建配置示例
+## 可复现验证
 
-**文件**：`config/custom-providers.example.json`
+以下命令在 2026-08-29 的 pinned Paseo revision 上运行：
 
-包含三个示例 provider：
-1. `my-openai`：OpenAI-compatible 端点
-2. `my-claude`：Anthropic-compatible 端点  
-3. `ollama-local`：ACP 本地 agent（默认禁用）
-
-#### ✅ 创建实施计划
-
-**文件**：`docs/CUSTOM_API_PLAN.md`（250+ 行）
-
-**内容**：
-- 技术方案分析（3 个备选方案）
-- 推荐实施路径
-- 阶段划分（自定义 API、移动端验证、配置管理 UI）
-- 风险评估与缓解措施
-- 验收标准
-- 时间估算（4-7 天）
-
-#### ✅ 创建快速开始指南
-
-**文件**：`docs/QUICKSTART.md`（300+ 行）
-
-**内容**：
-- 项目简介与特性
-- 安装步骤
-- 启动和验证命令
-- 自定义 API 配置示例
-- 移动端使用说明
-- 常用命令参考
-- 故障排除
-- 目录结构说明
-
-#### ✅ 创建验证脚本
-
-**文件**：`scripts/verify-custom-providers.sh`
-
-**功能**：
-- 检查配置示例和文档文件
-- 验证代码修改
-- 运行测试套件
-- 创建测试配置
-- 输出验证结果和下一步建议
-
-### 3. 更新现有文档
-
-#### ✅ 更新 README.md
-
-- 添加"自定义 API provider 支持"到已完成功能列表
-- 添加新文档链接
-
-#### ✅ 更新 PLAN.md
-
-- 在 M2 阶段标记"支持自定义 API provider"为已完成
-- 更新描述文字
-
-#### ✅ 更新 PROGRESS.md
-
-- 新增 2026-08-24 条目，记录自定义 provider 实施详情
-- 包含验证命令、架构影响、支持的 provider 类型
-- 配置示例和下一步计划
-
----
-
-## 📊 支持的 Provider 类型
-
-### 1. OpenAI-compatible 端点
-
-**适用场景**：
-- 官方 OpenAI API
-- OpenRouter
-- LiteLLM
-- vLLM
-- llama.cpp server
-- 自建网关
-
-**配置示例**：
-```json
-{
-  "extends": "codex",
-  "enabled": true,
-  "env": {
-    "OPENAI_API_KEY": "sk-...",
-    "OPENAI_BASE_URL": "https://api.openai.com"
-  },
-  "models": [...]
-}
-```
-
-### 2. Anthropic-compatible 端点
-
-**适用场景**：
-- 官方 Anthropic API
-- Z.AI（Zhipu GLM）
-- Alibaba Cloud（Qwen）
-- 自建 Claude 代理
-
-**配置示例**：
-```json
-{
-  "extends": "claude",
-  "enabled": true,
-  "env": {
-    "ANTHROPIC_API_KEY": "sk-ant-...",
-    "ANTHROPIC_BASE_URL": "https://my-proxy.example.com"
-  },
-  "disallowedTools": ["WebSearch"]
-}
-```
-
-### 3. ACP (Agent Client Protocol)
-
-**适用场景**：
-- Google Gemini CLI
-- Hermes (Nous Research)
-- 本地 Ollama + ACP wrapper
-- 自定义 ACP agent
-
-**配置示例**：
-```json
-{
-  "extends": "acp",
-  "enabled": true,
-  "command": ["ollama-acp", "--stdio"],
-  "models": [...]
-}
-```
-
----
-
-## 🎯 架构设计
-
-### 当前架构
-
-```text
-Paseo Web / Android / iOS / Desktop
-           │
-           ▼
-   Paseo TypeScript daemon
-           │
-           ├─ Codex (required) ────→ codex app-server
-           ├─ Custom OpenAI provider
-           ├─ Custom Claude provider
-           └─ Custom ACP provider
-```
-
-### 关键原则
-
-1. **Codex 不可禁用**：始终在 `requiredProviderIds` 中
-2. **显式启用**：自定义 provider 必须 `enabled: true`
-3. **标准协议**：只支持 OpenAI Responses API、Anthropic API、ACP
-4. **安全边界**：API keys 存本地，不同步到移动端
-
----
-
-## ✅ 验证结果
-
-### 代码质量
-
-- ✅ TypeScript 编译通过
-- ✅ 所有单元测试通过（76 tests）
-- ✅ Server build 成功
-- ✅ 代码格式检查通过
-
-### 功能测试
-
-- ✅ Bootstrap 初始化正常
-- ✅ Provider snapshot 管理正常
-- ✅ 自定义 provider allowlist 逻辑正确
-- ✅ Codex 强制启用机制生效
-
-### 文档完整性
-
-- ✅ 配置指南详尽（CUSTOM_PROVIDERS.md）
-- ✅ 实施计划清晰（CUSTOM_API_PLAN.md）
-- ✅ 快速开始易懂（QUICKSTART.md）
-- ✅ 配置示例实用（custom-providers.example.json）
-
----
-
-## 📱 移动端支持现状
-
-### 已实现（待验证）
-
-基础设施已就绪，需要真实设备测试：
-
-1. **E2EE Relay**：Paseo 上游已实现
-2. **配对机制**：WebSocket + 加密握手
-3. **断线重连**：2048 条 replay buffer
-4. **Provider 同步**：自动同步到移动端（不含 API keys）
-
-### 下一步验证
-
-- [ ] Android/iOS 真实配对测试
-- [ ] 网络切换重连测试（WiFi ↔ 4G）
-- [ ] 审批 UI 移动端适配
-- [ ] 后台终端移动端查看
-
----
-
-## 🔜 后续工作
-
-### 阶段 2：移动端验证（2-3 天）
-
-**优先级**：P1
-
-**任务**：
-1. E2EE relay 真实配对
-2. 断线重连场景验证
-3. 审批交互移动端测试
-4. 后台终端基本查看
-
-**验收标准**：
-- Android/iOS 成功配对
-- 网络切换自动重连
-- 审批请求正常显示
-
-### 阶段 3：配置管理 UI（1-2 天）
-
-**优先级**：P2
-
-**任务**：
-1. Web/桌面端配置管理界面
-   - 列出自定义 providers
-   - 添加/编辑/删除配置
-   - 测试连接
-   - 模型发现
-
-2. 移动端简化版
-   - 查看已配置 providers
-   - 选择默认 provider
-   - 基本连接状态
-
-### 改进项（低优先级）
-
-- [ ] 配置热重载（不重启 daemon）
-- [ ] Provider 健康检查
-- [ ] 自动切换备用 provider
-- [ ] 批量导入/导出配置
-
----
-
-## 📚 相关文档
-
-| 文档 | 路径 | 用途 |
-|------|------|------|
-| 快速开始 | `docs/QUICKSTART.md` | 新用户入门 |
-| 配置指南 | `docs/CUSTOM_PROVIDERS.md` | 配置自定义 API |
-| 实施计划 | `docs/CUSTOM_API_PLAN.md` | 完整实施路线图 |
-| 配置示例 | `config/custom-providers.example.json` | 参考配置 |
-| 架构说明 | `docs/ARCHITECTURE.md` | 系统架构 |
-| 功能矩阵 | `docs/FEATURE_MATRIX.md` | 功能完成度 |
-| 开发进度 | `docs/PROGRESS.md` | 历史记录 |
-
----
-
-## 🚀 快速验证
-
-```bash
-# 1. 运行验证脚本
-cd /home/e/workspace/codex-remote-workbench
-./scripts/verify-custom-providers.sh
-
-# 2. 启动 daemon
-./scripts/start-harness-workbench.sh
-
-# 3. 测试自定义 provider
-# 编辑 .paseo-dev/config.json，添加自定义 provider
-# 重启 daemon，然后：
+~~~bash
 cd upstream/paseo
-node packages/cli/bin/paseo provider ls --host 127.0.0.1:6877
-```
+npx vitest run packages/server/src/server/bootstrap.smoke.test.ts packages/server/src/server/agent/provider-snapshot-manager.test.ts --maxWorkers=1
+# Test Files 2 passed; Tests 77 passed
+npm run build:server
+npm run format:check
+npm run lint
+cd ../..
+cargo test --workspace --locked
+cargo fmt --all -- --check
+./scripts/verify-custom-providers.sh
+~~~
 
----
+verify-custom-providers.sh 使用临时目录解析示例配置，不写入 .paseo-dev。
+真实 Codex turn、设备和 hosted relay 的未完成项必须保留为待验。
 
-## 💡 关键设计决策
+## 配置示例和文档
 
-### 为什么选择方案 A（放宽限制）？
+- config/custom-providers.example.json：Codex、OpenAI-compatible、Anthropic-compatible
+  和 ACP 示例。
+- docs/CUSTOM_PROVIDERS.md：字段、凭证边界和 Settings 生命周期。
+- docs/CUSTOM_API_PLAN.md：实施路线和验收门槛。
+- docs/FEATURE_MATRIX.md：按能力记录证据。
+- docs/RELAY_VALIDATION.md：relay 已验证路径和缺口。
 
-**优点**：
-- ✅ 复用 Paseo 现有架构，开发成本低
-- ✅ 支持多种协议（OpenAI、Anthropic、ACP）
-- ✅ 不违背核心架构原则
-- ✅ 用户配置灵活
+## 版本与子模块
 
-**对比方案 B（Rust layer routing）**：
-- ❌ 需要重新实现大量协议逻辑
-- ❌ 维护成本高
-- ❌ 违背"Codex 是唯一 harness"原则
+根 Cargo.toml 没有顶层 version；crates/codex-bridge 和 crates/omp-primitives
+当前均为 0.1.0。Paseo package 为 0.5.0，当前 gitlink 为
+84acf5a65897a0c8cece2d0bdb323fe73edd03a4，公共上游基线为
+b5f583221436056e1fee2a3179d568a4c5ce85b9。父仓库没有可用 release 历史；版本规则
+见 docs/VERSION_CONTROL.md。父 CI 只会检出父提交记录的 gitlink，不能看到子模块
+未提交工作区；Paseo 自身 CI 位于 upstream/paseo/.github/workflows/ci.yml。
 
-**对比方案 C（降级 Codex）**：
-- ❌ 失去新功能（thread/revert）
-- ❌ 与现有工作冲突
+## 后续工作
 
-### 为什么保持 Codex 必需？
-
-1. **架构一致性**：Codex 是项目核心定位
-2. **功能完整性**：Codex 提供完整的桌面体验
-3. **安全保证**：审批、沙箱等关键功能由 Codex 提供
-4. **避免混乱**：明确主次关系
-
----
-
-## ⚠️ 已知限制
-
-1. **配置热重载**：当前需要重启 daemon
-2. **协议限制**：只支持标准协议，非标准端点需用户自行验证
-3. **移动端未验证**：E2EE relay 和配对尚未真实测试
-4. **UI 缺失**：配置管理暂时只能编辑 JSON
-
----
-
-## 📈 成果总结
-
-### 代码变更
-
-- 修改文件：1 个（bootstrap.ts）
-- 新增文档：4 个
-- 新增脚本：1 个
-- 测试覆盖：76 tests passed
-
-### 功能增强
-
-- ✅ 支持无限数量自定义 provider
-- ✅ 支持 3 种协议类型
-- ✅ 完整的配置示例和文档
-- ✅ 自动化验证脚本
-
-### 时间投入
-
-- 设计方案：1 小时
-- 代码实现：0.5 小时
-- 测试验证：0.5 小时
-- 文档编写：2 小时
-- **总计：4 小时**
-
----
-
-**实施者**：Claude (Kiro)  
-**审核状态**：待用户验证  
-**下一里程碑**：移动端真实设备测试
+1. Android/iOS 实机 provider、配对、网络和完整 transcript 验收。
+2. Desktop relay reconnect 的 renderer 生命周期修复与 E2E。
+3. 协议级 expectedRevision/CAS 的客户端压力验收、活跃会话连续性、重复 reload 压力和失败日志审计。
+4. 用户提供 fork 后，将 Paseo revision 推送到可访问 remote，再让父 CI 验证同一 revision。

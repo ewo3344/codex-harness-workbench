@@ -12,11 +12,11 @@ protocol_snapshot = "protocol/codex-app-server-0.149.0"
 repository = "https://github.com/getpaseo/paseo.git"
 license = "AGPL-3.0"
 upstream_revision = "b5f583221436056e1fee2a3179d568a4c5ce85b9"
-revision = "e9ff3170a3cc0575bf0f3d5d3f42fc08b185ff12"
+revision = "84acf5a65897a0c8cece2d0bdb323fe73edd03a4"
 branch = "codex-harness-workbench (local-only; fork remote pending)"
 path = "upstream/paseo"
 integration = "fork/product shell; CodexAppServerAgentClient is the initial provider path"
-local_patch = "patches/paseo/0001-feat-extend-Codex-harness-provider-and-relay-workflo.patch (apply to upstream_revision until a user-provided fork is available)"
+local_patch = "patches/paseo/0001-feat-extend-Codex-harness-provider-and-relay-workflo.patch then patches/paseo/0002-feat-enforce-daemon-config-CAS-and-keep-relay-sessio.patch (apply in order to upstream_revision until a user-provided fork is available)"
 
 [omp]
 repository = "https://github.com/can1357/oh-my-pi.git"
