@@ -729,3 +729,24 @@ bash packages/app/maestro/test-provider-forms-android.sh
 边界：未向 `getpaseo/paseo` 推送。未改 `config/paseo.dev.json` 打开 relay。未把 `expectedRevision` 改为 required。未声称 QR/配对/完整聊天/iOS/hosted TLS relay 已完成。
 
 下一步：K3 Desktop relay-terminal reconnect。K2 需在 Maestro `launchApp` 不再弄死 Vivo device server 后重跑 shipped 脚本。
+
+## 2026-08-29 — NEXT_GOALS_R4 K2 诊断修正：交互挂死，非安装、非杀进程、非 app
+
+推翻两个假设（证据，不改 harness 安装路径）：
+
+1. **不是 Vivo 杀进程。** 三个包（`sh.paseo.debug`、`dev.mobile.maestro`、`dev.mobile.maestro.test`）doze 白名单无效。失败为 **`120002ms since last byte` 且连接仍 open**——操作挂住，不是 device server 死亡。先前把 `DeviceServerDiedException` 当成「Vivo 杀了 driver」是误诊。
+2. **不是 app 的问题。** 不含 `launchApp` 的 flow 中 **`assertVisible` COMPLETED，紧接的 `tap` 挂 120s**。只读通、交互挂 → UIAutomator **`waitForIdle` 不返回**。关闭设备三项动画后更糟（`viewHierarchy` 也 **UNAVAILABLE**）。因此路线 **(a) release build 不解决此问题**。
+
+J2 / K2 仍为 **待验**：没有 `provider-after.json`，取消后仅 `codex` 的断言从未跑成。阻塞已从「再点一次安装框」精确到 **「Maestro driver 在 Android 16 上的交互操作不可用」**。安装与 `--no-reinstall-driver` 仍成立，不再当作 blocker。Driver 未因本轮诊断被重装或从 harness 拿掉。
+
+下一步优先级（本轮先做 1）：(1) 换 Maestro 版本（2.9.0 与 Android 16 兼容性存疑）；(2) 若仍不行，评估直接 uiautomator/Appium，或该 flow 降级模拟器并标注 **非真机**；(3) 向 Maestro 上游报告 `DEADLINE_EXCEEDED` + 连接 open 的特征。
+
+版本试验（2.9.0 已是 GitHub 最新，故试上一稳定版 **2.8.0**；从 `cli-2.8.0` 源码 `installDist`，Java 17，未覆盖 `~/.maestro` 的 2.9.0）：
+
+- 最小 flow（无 `launchApp`）：`assertVisible` COMPLETED，`tapOn` COMPLETED，exit 0。
+- shipped `test-provider-forms-android.sh`（serial `10AE6J03LC001JL`，隔离 `PASEO_HOME`，随机端口，`--no-relay`）：仍无 `provider-after.json`。`launchApp` 失败为 **`120002ms since last byte`**、`DEADLINE_EXCEEDED`、**连接仍 open**（`open=[[remote_addr=/127.0.0.1:46645]]`）。
+- 会话后两个 Maestro 包仍在。`--no-reinstall-driver` 未改。`--check` 不算真机通过。
+
+J2 / K2 仍 **待验**。2.8.0 证明只读+点按可以完成，但 shipped 路径的 `launchApp` 仍是 Android 16 上 120s 挂死；不是「再点一次安装框」。
+
+下一步（2.8.0 未打通 shipped 真机）：评估直接 uiautomator/Appium，或该 flow 降级模拟器并明确标注 **非真机**；向上游报告 `DEADLINE_EXCEEDED` + 连接 open（`120002ms since last byte`）。
