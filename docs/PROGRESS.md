@@ -636,3 +636,37 @@ git ls-files | grep -c paseo-dev
 边界：未向 `getpaseo/paseo` 推送。未改 `config/paseo.dev.json` 打开 relay。未把 RELAY_VALIDATION 未证明项标为完成。未安装 Maestro、未 `gh auth refresh`。H4 产品剩余项未做。
 
 下一步：用户选定父仓库名与可见性并完成 SSH 密钥或 `workflow` scope 后执行 H1；批准安装 Maestro 后执行 H3。
+
+## 2026-08-29 — NEXT_GOALS_R3 J1 公开远端；J2 Maestro 真机待验
+
+完成：
+
+- 将 `gh` git 协议切到 HTTPS 并配置 `gh auth git-credential`。父仓库公开仓 `https://github.com/ewo3344/codex-harness-workbench.git` 已创建并推送 `main`。
+- 为 `ewo3344` 创建 `getpaseo/paseo` fork；仅向 `fork` 推送 `codex-harness-workbench`（`84acf5a`）。本地检出该分支并跟踪 `fork/codex-harness-workbench`，`main` 回到 `origin/main`（`b5f5832`）。
+- 安装 Maestro：来源 `https://get.maestro.mobile.dev`（`curl -fsSL | bash`），版本 `2.9.0`，二进制 `$HOME/.maestro/bin/maestro`。
+
+待验：
+
+- J2 Android 真机 provider 表单：设备 `10AE6J03LC001JL` 在线，已运行 shipped `test-provider-forms-android.sh`。隔离 daemon 以 `--no-relay` 启动且 `/api/health` 为 ok，但 Maestro 安装 driver APK 时 `INSTALL_FAILED_ABORTED: User rejected permissions`；随后 `adb install -r -g` 同样失败。无 `provider-after.json`，取消后仅 `codex` 的断言未跑成。不是 `--check` 通过，也不是模拟器替代。
+
+验证：
+
+```bash
+gh auth status
+git remote -v
+git log origin/main --oneline -1
+git -C upstream/paseo remote -v
+git -C upstream/paseo branch --show-current
+git -C upstream/paseo rev-parse --abbrev-ref '@{upstream}'
+git -C upstream/paseo status --short
+git ls-files | grep -c paseo-dev
+adb devices -l
+$HOME/.maestro/bin/maestro --version
+PASEO_MAESTRO_SERIAL=10AE6J03LC001JL bash packages/app/maestro/test-provider-forms-android.sh
+```
+
+结果：token scopes 含 `workflow`；父 `origin` 为 `ewo3344/codex-harness-workbench`；Paseo `origin` 仍为 `getpaseo/paseo`，`fork` 为 `ewo3344/paseo`；当前分支 `codex-harness-workbench` 跟踪 `fork/codex-harness-workbench`。`paseo-dev` 计数 0。Maestro `2.9.0`。真机脚本因 USB 安装权限被拒退出 1。
+
+边界：未向 `https://github.com/getpaseo/paseo.git` 推送。未生成或注册 SSH 密钥，未执行 `gh auth refresh`。未改 `config/paseo.dev.json` 打开 relay。未把 RELAY_VALIDATION 未证明项标为完成。`patches/paseo/` 保留。J3 未做。
+
+下一步：在设备上允许 USB 安装 Maestro driver APK 后重跑 J2 脚本；J3 按 MASTER_PLAN 剩余项（配对、多设备、网络切换、CAS 数组并发、Desktop reconnect、额度恢复后 rewind E2E）。
