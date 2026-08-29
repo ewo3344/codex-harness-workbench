@@ -1,5 +1,7 @@
 # 后续目标指示（交接给 Codex）
 
+**状态**：G0–G2 已完成（2026-08-29）。后续工作见 [`docs/NEXT_GOALS_R2.md`](NEXT_GOALS_R2.md)，不要把本文件的 G0–G2 项当待办重做。
+
 编写日期：2026-08-29
 适用仓库：`/home/e/workspace/codex-remote-workbench`
 

@@ -51,7 +51,7 @@ packages/server/src/server/agent/provider-snapshot-manager.ts：
 
 ### Android/iOS
 
-- Android Maestro provider-form 契约脚本已准备；当前无在线设备。
+- Android Maestro provider-form 契约脚本已准备；设备 `10AE6J03LC001JL`（V2352A）已接入，Maestro 未安装。
 - Android relay 控制面曾观察到 offer 注册和 session resume，但扫码/手动配对、多设备、
   网络切换、聊天/审批/terminal UI 和 iOS 仍待真实客户端验证。
 - API keys 不同步到移动端。

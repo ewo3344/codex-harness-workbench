@@ -600,3 +600,39 @@ command -v maestro
 边界：未创建 GitHub fork，未向 Paseo `origin` 推送。Android Maestro 真机 provider 生命周期、QR/手动配对、多设备、完整聊天投递、Wi-Fi/4G 切换、replay overflow 恢复、iOS 配对、hosted TLS relay 仍为待验。未改 `config/paseo.dev.json` 打开 relay。未改 STATUS.md / MASTER_PLAN.md。
 
 下一步：用户提供 fork 地址后再推送 `codex-harness-workbench`；安装 Maestro 后用 `PASEO_MAESTRO_SERIAL=10AE6J03LC001JL bash packages/app/maestro/test-provider-forms-android.sh` 跑真机表单。
+
+## 2026-08-29 — NEXT_GOALS_R2 H2 文档勘误；H1/H3 待授权
+
+完成：
+
+- `STATUS.md` 去掉无 tag 支撑的「当前版本：v0.5.0 (Alpha)」，改为「无发布 tag（pre-tag）」；预计 Alpha 发布日期仍为 2026-09-10。
+- `docs/IMPLEMENTATION_SUMMARY.md` 将「当前无在线设备」改为设备 `10AE6J03LC001JL`（V2352A）已接入、Maestro 未安装。
+- `docs/NEXT_GOALS.md` 增加状态头：G0–G2 已完成，后续见 `docs/NEXT_GOALS_R2.md`。
+
+待验：
+
+- H1 远端备份：`gh` 已登录 `ewo3344`，协议为 SSH，但 `ssh -T git@github.com` 为 `Permission denied (publickey)`；token 无 `workflow` / `admin:public_key`；父仓库无 remote、无用户选定的仓库名与可见性。未推送、未生成密钥、未 refresh scope。
+- H3 Android Maestro 真机脚本：`adb devices -l` 显示 `10AE6J03LC001JL`，`maestro` 不在 PATH；未安装 Maestro，未运行 `test-provider-forms-android.sh`。
+
+验证：
+
+```bash
+grep -n "v0\.5\.0" STATUS.md
+grep -n "当前无在线设备" docs/IMPLEMENTATION_SUMMARY.md
+sed -n '1,8p' docs/NEXT_GOALS.md
+gh auth status
+ssh -T git@github.com
+git remote -v
+git -C upstream/paseo remote -v
+git -C upstream/paseo branch --show-current
+adb devices -l
+command -v maestro
+git tag -l
+git ls-files | grep -c paseo-dev
+```
+
+结果：STATUS.md 无 `v0.5.0`；IMPLEMENTATION_SUMMARY.md 无「当前无在线设备」；NEXT_GOALS.md 状态头指向 NEXT_GOALS_R2.md。SSH `Permission denied (publickey)`；Paseo `origin` 仍为 `https://github.com/getpaseo/paseo.git`，无 `fork` remote。`maestro` 不在 PATH。`git tag` 为空；`paseo-dev` 计数为 0。
+
+边界：未向 `getpaseo/paseo` 推送。未改 `config/paseo.dev.json` 打开 relay。未把 RELAY_VALIDATION 未证明项标为完成。未安装 Maestro、未 `gh auth refresh`。H4 产品剩余项未做。
+
+下一步：用户选定父仓库名与可见性并完成 SSH 密钥或 `workflow` scope 后执行 H1；批准安装 Maestro 后执行 H3。

@@ -277,5 +277,5 @@ node packages/cli/bin/paseo provider ls --host 127.0.0.1:6877 --json
 ---
 
 **项目状态**：🚧 活跃开发中  
-**当前版本**：v0.5.0 (Alpha)  
+**当前版本**：无发布 tag（pre-tag）  
 **预计 Alpha 发布**：2026-09-10
