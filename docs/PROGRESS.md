@@ -873,3 +873,24 @@ npx vitest run src/screens/settings/providers-section.test.tsx
 ```
 
 边界：未向 `getpaseo/paseo` 推送。未开 relay。未把 `expectedRevision` 改为 required。未引入 OMP plugin/runtime。未开 Paseo 本地 plugin。
+
+## 2026-08-30 — K3.1 Desktop relay-terminal reconnect：已知缺陷（待验）
+
+定位（真跑 shipped `packages/desktop/e2e/relay-terminal-reconnect.e2e.mjs`，非 `--check`）：
+
+- Linux Wayland（`DISPLAY=:0`，`XDG_SESSION_TYPE=wayland`）下 Electron 日志：`--ozone-platform=wayland` 与 Vulkan 不兼容。`--ozone-platform=x11` 使 GPU 进程 SIGSEGV（exit 139），随后 `loadURL` `ERR_FAILED (-2)`。
+- 对已加载的 Expo 文档做推测性 `reload()`，加上未锚定的 Playwright `:${daemon.port}/` abort，会把 renderer 留在 `chrome-error://chromewebdata/`（preload 在，`__paseoHostRuntimeStore` 不在）。
+- 推迟并锚定 daemon 拦截、Linux 加 `--disable-vulkan --disable-gpu` 后，host runtime 会出现；侧栏「新建 workspace」ghost row 可用 dispatched pointer/click 进入 `/new`。
+- Playwright 普通 click 在「visible, enabled and stable」上挂死。`new-workspace-launch-menu` 在 click / dispatched events / Enter / Space 下都不变为可见；选项节点以 hidden menuitem 存在。终端从未启动，relay 断开重连未跑到。
+
+未把 T9 标完成。未开 `config/paseo.dev.json` relay。未向 `getpaseo/paseo` 推送。未声称 QR/配对/iOS/hosted TLS relay 已完成。
+
+验证：
+
+```bash
+cd upstream/paseo/packages/desktop
+PASEO_E2E_TIMEOUT_MS=180000 npm run test:e2e:relay-terminal
+# 失败于 new-workspace-launch-menu 不可见；host runtime 已可达
+```
+
+下一步：K3.2 reload 失败日志审计。T9 需在 Electron CDP 能打开 launch dropdown（或换掉 Radix 手势）后再跑 reconnect。

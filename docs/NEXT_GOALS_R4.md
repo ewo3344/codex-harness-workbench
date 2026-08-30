@@ -189,9 +189,11 @@ hosted TLS relay 已完成——这些在 `docs/RELAY_VALIDATION.md` 已列为�
 
 均不需要设备、不需要模型额度：
 
-1. **Desktop relay-terminal reconnect**：`IMPLEMENTATION_SUMMARY.md:49-50` 记录
-   该 case 仍有 renderer 生命周期失败日志，未达完成标准。定位并修复，
-   或如实降级为已知缺陷并记录复现步骤。
+1. **Desktop relay-terminal reconnect**：2026-08-30 已定位并记为已知缺陷（T9 未完成）。
+   复现：`cd upstream/paseo/packages/desktop && npm run test:e2e:relay-terminal`。
+   Linux Wayland+Vulkan：`--ozone-platform=x11` → GPU SIGSEGV 139；推测性 reload
+   → `chrome-error://chromewebdata/`；host runtime 可达后 launch dropdown 不打开。
+   详见 `docs/PROGRESS.md` 当日条目。不要用 `--check` / 模拟器冒充通过。
 2. **reload 失败日志审计**：`PROGRESS.md` 2026-08-28 条目列为未完成。
    reload 失败已能原子回滚（41/41 通过），但失败路径的日志可审计性未验证。
 3. **活跃会话连续性与重复更新压力**：同上条目所列，与 K1 相邻但独立——

@@ -46,8 +46,11 @@ packages/server/src/server/agent/provider-snapshot-manager.ts：
 - 新建 workspace 默认 Codex CLI terminal，并保留 no-alt-screen 参数。
 - Web + packaged daemon + 本地 Wrangler E2EE relay terminal 的创建、订阅、输入/输出、
   resize 和终止。
-- Desktop browser-tabs 路径已通过真实 Electron 验证；relay-terminal reconnect case
-  仍有 renderer 生命周期失败日志，不能标记完成。
+- Desktop browser-tabs 路径已通过真实 Electron 验证；relay-terminal reconnect
+  在 2026-08-30 仍不能标记完成。Linux Wayland 上 ozone/Vulkan 与推测性
+  reload 会弄死 renderer；host runtime 可达之后 `new-workspace-launch-menu`
+  仍无法从 Electron CDP 打开。见 `docs/PROGRESS.md` 当日 K3.1 与
+  `packages/desktop/e2e/relay-terminal-reconnect.e2e.mjs`。
 
 ### Android/iOS
 

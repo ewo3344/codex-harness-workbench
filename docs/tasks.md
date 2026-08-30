@@ -106,8 +106,10 @@ T7 通过时包保持 `enabled=1`。
       Wi-Fi / モバイル回線の切替、replay 溢れ後の復旧、iOS、ホスト型 TLS relay。
       ローカル relay 基線と Web relay terminal、Android の一部復旧経路は取得済み。
 - [ ] **T9 Desktop relay-terminal 再接続**
-      renderer ライフサイクルの失敗ログが残り完了基準に未達。
-      修正するか、既知の不具合として再現手順を記録する。
+      2026-08-30 既知の不具合として記録（未完成）。Linux Wayland+Vulkan で
+      renderer が `chrome-error` / `ERR_FAILED` になり、host runtime 到達後も
+      `new-workspace-launch-menu` が CDP から開かない。再現は PROGRESS
+      2026-08-30 K3.1 と shipped `test:e2e:relay-terminal`。reconnect 本体は未証明。
 - [ ] **T10 設定面の残件**
       プロトコル級の版数競合（複数クライアントの一括送信）、
       稼働セッションの継続性、長時間の反復更新耐性、reload 失敗ログの監査性。
