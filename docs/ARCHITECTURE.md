@@ -51,9 +51,11 @@ TypeScript daemon。
 | stdio 监管、并发 request 路由、replay、基础设施后端 | Rust daemon |
 | 文件扫描/隔离等可替换 primitive | 明确 feature 后的 OMP Rust crate |
 
-Pi/OMP 不再提供第二套 agent loop。这里的“用 Pi/OMP”严格指复用其经过验证的
-Rust primitive；否则 Codex 与 Pi 会争夺 session、tool、approval 和 prompt 的事实源，
-无法实现可信的桌面等价体验。
+Pi/OMP 不再提供第二套 *Codex* agent loop。产品可发行 Paseo 已实现的其他 builtin
+provider（claude / copilot / opencode / pi）；Codex 仍是 required / 默认。
+这里的“用 Pi/OMP”作为基础设施严格指复用其经过验证的 Rust primitive，
+不引入 OMP plugin/runtime。否则 Codex 与 Pi 会争夺 session、tool、approval
+和 prompt 的事实源，无法实现可信的桌面等价体验。
 
 ## 不可破坏的安全约束
 

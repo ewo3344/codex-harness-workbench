@@ -850,3 +850,26 @@ adb -s 10AE6J03LC001JL reverse --list        # 当时 tcp:37535 与 tcp:8081
 ```
 
 RELAY_VALIDATION 未证明项未改。未向 `getpaseo/paseo` 推送。未改 `config/paseo.dev.json` 打开 relay。未把 `expectedRevision` 改为 required。未 `am force-stop` / `pm clear`。未覆盖 `~/.maestro`。未声称 Maestro 路径通过。
+
+## 2026-08-30 — 撤销产品 Codex-only 发行
+
+完成：
+
+- `bootstrap.ts` 不再用 `CODEX_ONLY_PROVIDER_IDS` 种发行集合。产品 builtin 为 `claude` / `codex` / `copilot` / `opencode` / `pi`；`requiredProviderIds` 仍只有 `codex`；自定义仍 `enabled: true` opt-in；`omp` 不发行。
+- `ProviderSnapshotManager` 测试改为：enabled claude/copilot 不被仅因非 Codex 删除；enabled custom 发行；disabled custom 不发行；`codex.enabled=false` 时 Codex 仍 enabled。
+- 设置 UI 显示发行的 builtin；Codex 仍无禁用/删除；其他 builtin 有开关、无删除。
+- `config/paseo.dev.json` 不再把 claude/copilot/opencode/pi 强制 `enabled: false`；`omp.enabled=false`；relay 仍关。
+- 文档：R1.2、D2、PLAN 决策 1/4、ARCHITECTURE 与 README 同步。决策 1 仍是「不 fork Codex core」，不是「只发行 Codex」。不可破坏约束 1–7 未改。
+
+验证：
+
+```bash
+cd upstream/paseo/packages/server
+npx vitest run --fileParallelism src/server/agent/provider-snapshot-manager.test.ts src/server/agent/mutable-provider-config-owner.test.ts
+# 61 passed
+cd ../app
+npx vitest run src/screens/settings/providers-section.test.tsx
+# 9 passed
+```
+
+边界：未向 `getpaseo/paseo` 推送。未开 relay。未把 `expectedRevision` 改为 required。未引入 OMP plugin/runtime。未开 Paseo 本地 plugin。

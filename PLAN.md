@@ -10,10 +10,10 @@
 
 ## 已确认的技术决策
 
-1. **Codex harness 是唯一 agent runtime。** 启动官方 `codex app-server`，使用 v2 双向 JSON-RPC；不 fork、复制或重写 Codex core。
+1. **Codex harness 是 Codex provider 的唯一 agent runtime。** 启动官方 `codex app-server`，使用 v2 双向 JSON-RPC；不 fork、复制或重写 Codex core。这不是「Paseo 只发布 Codex provider」：claude / copilot / opencode / pi 等已实现 builtin 可发行、可使用；Codex 仍是 required / 默认。不引入 OMP plugin/runtime。
 2. **先复用 Paseo daemon，随后替换其基础设施为 Rust。** Paseo 0.5.0 已有成熟的 `CodexAppServerAgentClient`；先保留这一 adapter 获得完整可用链路，再将进程管理、事件存储、文件观察、终端和 relay transport 分模块迁到 Rust，避免一次性重写破坏功能。
 3. **只择取 OMP 的底层能力。** 候选为 `pi-shell`、`pi-iso`、`pi-walker` 等 Rust crate。明确排除 OMP/Pi 的 provider、agent loop、prompt、plugin/extension 和 TUI 状态模型，避免出现两个 harness。
-4. **Paseo fork 是产品接入面。** 复用其 iOS/Android/Web/Desktop、E2EE relay、配对、worktree、diff/review UI 和现有 Codex app-server adapter；默认关闭其他 provider 与 Paseo 本地 plugin，不再继续扩展仓库内旧 Android 客户端。OMP/Pi plugin 不引入；Codex 自己通过 app-server 暴露的 `plugin/*`、`app/*`、`marketplace/*` 必须保留并最终做管理面。
+4. **Paseo fork 是产品接入面。** 复用其 iOS/Android/Web/Desktop、E2EE relay、配对、worktree、diff/review UI 和现有 Codex app-server adapter；默认关闭 Paseo 本地 plugin，不再继续扩展仓库内旧 Android 客户端。产品 builtin provider（claude / copilot / opencode / pi）与 opt-in 自定义 provider 可使用；Codex 仍 required。OMP/Pi plugin 不引入；Codex 自己通过 app-server 暴露的 `plugin/*`、`app/*`、`marketplace/*` 必须保留并最终做管理面。
 5. **协议按 Codex 版本生成。** `protocol/codex-app-server-<version>/` 保存由当前二进制生成的 JSON Schema和 TypeScript 类型。daemon 在启动时记录并校验 Codex 版本，未知版本降级到透明转发而不是错误解析。
 6. **许可边界明确。** Codex 为 Apache-2.0，OMP 为 MIT（含第三方 notices），Paseo 为 AGPL-3.0。若复用/修改 Paseo 代码，整个网络服务派生发布路径按 AGPL-3.0 合规；OMP crate 单独保留 attribution/notices。
 
@@ -70,6 +70,7 @@ Paseo mobile / desktop / web / CLI
 - [x] 在 Paseo fork 的最终 provider snapshot 边界强制只发布且始终启用 `codex`；真实 daemon 在持久化 `codex.enabled=false` 时仍只返回可用 Codex，OMP/ACP/配置热重载不能绕过。
 - [x] 设置 UI 只显示 Codex，移除 provider 安装 catalog、启停开关与删除入口，同时保留 wire/schema 和历史配置读取兼容。
 - [x] **支持自定义 API provider**：放宽 Codex-only 限制为"Codex 必需 + 可选自定义"；用户可在配置中添加 OpenAI-compatible、Anthropic-compatible 或 ACP provider，并通过 `enabled: true` 显式启用。
+- [x] **撤销产品 Codex-only 发行**：builtin claude / copilot / opencode / pi 可发行、可使用；Codex 仍 required（`enabled=false` 时仍可用）；自定义仍 opt-in；不引入 OMP plugin/runtime；Paseo 本地 plugin 仍默认关闭。
 - [x] 映射 command/file-change/approval/request-user-input/diff/token-usage；turn diff 只在完成时落一张最新快照卡，provisional live event 保持 epoch/no-seq 重连语义。
 - [x] 在实体 Android 16 设备上验证 E2EE relay offer 注册、控制 RPC、短暂会话恢复和 relay worker 重启后的 agent/timeline 恢复；live timeline 重连事件携带 epoch 且不伪造 replay seq。
 - [x] 在本地 Wrangler relay 中用真实 Paseo `DaemonClient` 验证 E2EE 断线自动重连、canonical timeline cursor catch-up，以及 provisional/live 事件不重复。
