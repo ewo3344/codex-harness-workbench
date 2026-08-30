@@ -1,5 +1,7 @@
 # Codex Harness Workbench 重建计划
 
+**档案**：决策 1–6 仍有效。M1 勾选里的「强制 Codex-only」是当时里程碑，不是当前发行策略。当前剩余工作见 [`docs/tasks.md`](docs/tasks.md)。
+
 最后更新：2026-08-27
 
 ## 产品目标

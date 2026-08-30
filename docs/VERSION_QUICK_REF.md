@@ -10,11 +10,10 @@
 | Rust bridge | crates/codex-bridge/Cargo.toml | 0.1.0 |
 | OMP primitives | crates/omp-primitives/Cargo.toml | 0.1.0 |
 | Paseo package | upstream/paseo/package.json | 0.5.0 |
-| Paseo gitlink | UPSTREAMS.toml | 84acf5a65897a0c8cece2d0bdb323fe73edd03a4 |
+| Paseo gitlink | `git submodule status` / UPSTREAMS.toml | live SHA；本表不跟踪每次 pin |
 | Codex CLI | UPSTREAMS.toml | 0.149.0 |
 
-父仓库首次提交已完成；可访问的 Paseo fork 尚待配置。不要把工作区日期或文档
-中的路线图当成 release 证据；以 STATUS.md 和 docs/PROGRESS.md 的命令结果为准。
+父仓库 `origin` 与 Paseo `fork`（`ewo3344/paseo`，分支 `codex-harness-workbench`）已配置。不要向 `getpaseo/paseo` 推送。不要把文档日期当成 release 证据。剩余工作 [`docs/tasks.md`](tasks.md)。
 
 ## 常用查询
 
@@ -70,12 +69,11 @@ cd ../..
 
 | 能力 | Web/Desktop | Android/iOS |
 | --- | --- | --- |
-| Codex bridge、线程和 turn 控制 | 真实 bridge/CLI 路径已验证 | 共享协议，移动端完整路径待验 |
-| Custom provider 配置 | Settings 生命周期和浏览器路径已验证 | 共享 UI，真机生命周期待验 |
-| E2EE relay terminal | Web 本地 Wrangler 路径已验证 | 控制面部分验证，配对/网络切换待验 |
-| Desktop 包装 | 浏览器 tabs 路径已验证 | 不适用 |
-| 配置热更新 | reload 与 snapshot 路径已验证 | 共享协议，真机待验 |
-| CAS 并发、活跃会话连续性 | 待验 | 待验 |
+| Codex bridge、线程和 turn 控制 | 已验证 | 完整路径待验（T8） |
+| Custom provider 配置 | Settings + 浏览器已验证 | Android T7 表单 cancel 通过；iOS 待验 |
+| E2EE relay terminal | Web 本地 Wrangler 已验证 | 配对/网络切换待验（T8） |
+| Desktop 包装 | browser-tabs 已验证 | reconnect 未完成（T9） |
+| 配置热更新 / CAS | reload + T5 CAS 已验证 | 会话连续性、reload 日志待验（T10） |
 
 ## 升级与回滚原则
 

@@ -6,17 +6,7 @@ Paseo 提供 Web/桌面/移动端与远程接入，Rust 逐步接管 daemon 基�
 claude / copilot / opencode / pi 等已实现 builtin 可使用；Codex 仍是 required /
 默认。迁移期间保留目录名 `codex-remote-workbench`，等 Paseo 客户端切换完成后再原子改名。
 
-当前已经跑通：
-
-- Paseo → Codex app-server → 真实模型 turn；
-- Rust app-server 双向并发 transport、乱序 response、审批回传和有限 replay；
-- 真实命令审批，以及跨 app-server 重启的 thread 生命周期；
-- 真实 turn steer 与 active-turn interrupt；
-- 基于 0.149 experimental `thread/revert(beforeTurnId)` 的同线程对话 rewind；
-- 默认关闭的 OMP `pi-walker` Rust adapter；
-- Paseo 发布 claude / copilot / opencode / pi / Codex；旧配置也不能禁用 required 的 Codex runtime；
-- **自定义 API provider 支持**：可在配置中添加 OpenAI-compatible、Anthropic-compatible 或 ACP provider，同时保持 Codex 作为必需的核心 runtime。
-- 新建工作区默认选择 **Codex CLI** 终端 profile；终端以 `--no-alt-screen` 运行，桌面端继续复用现有平铺 pane/split 布局。
+已跑通：Paseo→Codex 真实 turn；Rust 并发 transport / 审批 / thread+turn / rewind / replay；产品 builtin + 自定义 API（Codex required）；Web relay terminal。细节见 [STATUS.md](STATUS.md)。
 
 当前入口：
 
@@ -24,21 +14,10 @@ claude / copilot / opencode / pi 等已实现 builtin 可使用；Codex 仍是 r
 - [**如何运行**](docs/QUICKSTART.md) — `./scripts/start-harness-workbench.sh`
 - [项目状态总览](STATUS.md)
 - [架构与组件边界](docs/ARCHITECTURE.md)
-- [文档索引](docs/INDEX.md)
+- [文档索引](docs/INDEX.md)（含档案列表）
 - [开发进度日志](docs/PROGRESS.md)
 - [桌面体验功能矩阵](docs/FEATURE_MATRIX.md)
 - [自定义 Provider 配置指南](docs/CUSTOM_PROVIDERS.md)
-- [版本控制与发布计划](docs/VERSION_CONTROL.md)
-
-档案（不是当前必读）：
-
-- [08-24 三周实施计划快照](docs/MASTER_PLAN.md)
-- [G0–G2 交接指示（已完成）](docs/NEXT_GOALS.md)
-- [重建计划](PLAN.md)
-- [自定义 API 专项计划快照](docs/CUSTOM_API_PLAN.md)
-- [实施总结](docs/IMPLEMENTATION_SUMMARY.md)
-- [OMP Rust 评估](docs/OMP_RUST_ASSESSMENT.md)
-- [版本快速参考](docs/VERSION_QUICK_REF.md)
 
 ## 当前可运行入口
 

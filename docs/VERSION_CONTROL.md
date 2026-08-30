@@ -11,9 +11,8 @@
 
 根项目尚没有可用的 release tag。根 Cargo.toml 是 workspace 清单，没有
 version 字段；两个根 crate 当前都声明为 0.1.0。Paseo package 当前为 0.5.0，
-Codex CLI 为 0.149.0。Paseo gitlink 当前为
-84acf5a65897a0c8cece2d0bdb323fe73edd03a4，公共上游基线为
-b5f583221436056e1fee2a3179d568a4c5ce85b9。
+Codex CLI 为 0.149.0。live Paseo gitlink 以 `git submodule status` 为准；
+公共上游基线见 UPSTREAMS.toml `upstream_revision`。
 
 ~~~bash
 cargo metadata --no-deps --format-version 1
@@ -25,8 +24,8 @@ git -C upstream/paseo rev-parse HEAD
 node -p 'require("./upstream/paseo/package.json").version'
 ~~~
 
-Paseo 的 gitlink 必须指向可从配置的 remote 获取的 commit。当前产品 commit
-仍是本地分支结果，fork remote 尚待配置；在此之前不要向 Paseo 上游 origin 推送。
+Paseo 的 gitlink 必须指向 fork 上可获取的 commit（`ewo3344/paseo`，
+`codex-harness-workbench`）。不要向 `getpaseo/paseo` 的 origin 推送。
 
 ## 语义化版本
 
@@ -50,17 +49,8 @@ Git 历史单独维护。
 
 ## 当前工作与路线图
 
-当前没有 root release 历史。G0/G1 已完成：Paseo 产品 commit 为
-84acf5a65897a0c8cece2d0bdb323fe73edd03a4，父仓库基线提交为
-95a49d6。以下仍是工作项，不是发生过的 release：
-
-1. 继续用真实证据验证 Codex bridge、provider 生命周期、relay 与桌面路径。
-2. 完成 Android/iOS 尚未验证的配对、网络切换、审批和 transcript 场景。
-3. 完成配置并发 CAS、活跃会话连续性和 reload 失败审计的最终客户端验收。
-4. 有可复现构建产物与远程仓库后，再创建第一个预发布 tag。
-
-实现进度以 STATUS.md、docs/PROGRESS.md、docs/FEATURE_MATRIX.md 和
-docs/RELAY_VALIDATION.md 为准，不要从版本号推断完成度。
+当前没有 root release 历史。剩余工作见 [`docs/tasks.md`](tasks.md)（T8–T11），
+不要从版本号或 MASTER_PLAN 推断完成度。
 
 ## 文件与版本归属
 

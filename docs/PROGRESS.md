@@ -911,3 +911,9 @@ node scripts/check-docs-current-claims.mjs
 ```
 
 未改 provider 发行代码。未开 relay。未向 `getpaseo/paseo` 推送。未删 PROGRESS / verification / protocol。
+
+## 2026-08-30 — 压缩过期文档
+
+完成：STATUS / INDEX / QUICKSTART 去掉过期待办和重复清单；VERSION_* 不再把「无 remote / fork 未配 / T7 未做 / CAS 未做」写成现状；MASTER_PLAN 与 PLAN 保持档案。live SHA 以 git 为准。
+
+验证：`node scripts/check-docs-current-claims.mjs`
