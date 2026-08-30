@@ -18,20 +18,26 @@ claude / copilot / opencode / pi 等已实现 builtin 可使用；Codex 仍是 r
 - **自定义 API provider 支持**：可在配置中添加 OpenAI-compatible、Anthropic-compatible 或 ACP provider，同时保持 Codex 作为必需的核心 runtime。
 - 新建工作区默认选择 **Codex CLI** 终端 profile；终端以 `--no-alt-screen` 运行，桌面端继续复用现有平铺 pane/split 布局。
 
-完整范围与证据见：
+当前入口：
 
-- [**完整实施计划（必读）**](docs/MASTER_PLAN.md) ⭐
-- [**版本控制与发布计划**](docs/VERSION_CONTROL.md) 🔖
+- [**剩余工作**](docs/tasks.md) — T8–T11（relay 未证明项、desktop reconnect、配置生命周期残件、真实模型 turn）
+- [**如何运行**](docs/QUICKSTART.md) — `./scripts/start-harness-workbench.sh`
 - [项目状态总览](STATUS.md)
-- [重建计划](PLAN.md)
 - [架构与组件边界](docs/ARCHITECTURE.md)
+- [文档索引](docs/INDEX.md)
+- [开发进度日志](docs/PROGRESS.md)
 - [桌面体验功能矩阵](docs/FEATURE_MATRIX.md)
-- [开发进度](docs/PROGRESS.md)
-- [OMP Rust 评估](docs/OMP_RUST_ASSESSMENT.md)
 - [自定义 Provider 配置指南](docs/CUSTOM_PROVIDERS.md)
-- [自定义 API 与手机体验改善计划](docs/CUSTOM_API_PLAN.md)
-- [快速开始指南](docs/QUICKSTART.md)
+- [版本控制与发布计划](docs/VERSION_CONTROL.md)
+
+档案（不是当前必读）：
+
+- [08-24 三周实施计划快照](docs/MASTER_PLAN.md)
+- [G0–G2 交接指示（已完成）](docs/NEXT_GOALS.md)
+- [重建计划](PLAN.md)
+- [自定义 API 专项计划快照](docs/CUSTOM_API_PLAN.md)
 - [实施总结](docs/IMPLEMENTATION_SUMMARY.md)
+- [OMP Rust 评估](docs/OMP_RUST_ASSESSMENT.md)
 - [版本快速参考](docs/VERSION_QUICK_REF.md)
 
 ## 当前可运行入口

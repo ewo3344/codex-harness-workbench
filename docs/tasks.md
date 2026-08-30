@@ -10,8 +10,9 @@
 - [x] **T1 Rust bridge**（R1.1/R1.3/R1.4）
       並行 JSON-RPC・順不同 response・承認往復・thread ライフサイクル・
       turn start/steer/interrupt・`thread/revert` rewind・有界 replay。
-- [x] **T2 Codex-only 境界**（R1.2）
-      発行 allowlist と required invariant。`codex.enabled=false` でも Codex 稼働。
+- [x] **T2 required Codex と builtin 発行**（R1.2）
+      製品 builtin（少なくとも claude / copilot / opencode / pi）を発行。
+      Codex は required。`codex.enabled=false` でも Codex 稼働。カスタムは opt-in。
 - [x] **T3 カスタム provider**（R2.1〜R2.5）
       3 方式に対応。設定 UI で作成・編集・有効化・無効化・削除、daemon 再起動不要。
       実ブラウザで生命周期 E2E 通過。資格情報の漏洩なし。
@@ -93,13 +94,13 @@ T7 通过时包保持 `enabled=1`。
 副次的な撹乱要因：前景が他アプリに繰り返し奪われる
 （VPN、動画アプリ、メッセージアプリ等）。UI 自動化の手段を問わず安定しない。
 
-### 次手
+### 独立して開いている阻害（T7 完了後。次の製品作業ではない）
 
-1. 阻害 A：Maestro 操作系は未修復。T7 は adb 半手動で通過済み。置換判断は独立。
+1. 阻害 A：Maestro 操作系は未修復。T7 は adb 半手動で通過済み。
 2. 阻害 B：前景 5 分は未翻转。空闲/后台の `enabled=3` は残る。連打 `pm enable` しない。
 3. 上流へ報告：`DEADLINE_EXCEEDED` かつ接続 open（最終受信から 120002ms）。
 
-## 未着手
+## 未着手（現在の残り作業）
 
 - [ ] **T8 relay 未証明項**（R3.1/R3.2）
       QR・手入力ペアリング、複数デバイス、チャット全経路の配送、
@@ -111,8 +112,8 @@ T7 通过时包保持 `enabled=1`。
       `new-workspace-launch-menu` が CDP から開かない。再現は PROGRESS
       2026-08-30 K3.1 と shipped `test:e2e:relay-terminal`。reconnect 本体は未証明。
 - [ ] **T10 設定面の残件**
-      プロトコル級の版数競合（複数クライアントの一括送信）、
       稼働セッションの継続性、長時間の反復更新耐性、reload 失敗ログの監査性。
+      （同一 provider の CAS は T5 済み。expectedRevision は optional のまま。）
 - [ ] **T11 実モデル turn 依存の検証**
       rewind の成功 2 turn E2E ほか。API 額度の回復（2026-08-31 08:16）を待つ。
 

@@ -894,3 +894,20 @@ PASEO_E2E_TIMEOUT_MS=180000 npm run test:e2e:relay-terminal
 ```
 
 下一步：K3.2 reload 失败日志审计。T9 需在 Electron CDP 能打开 launch dropdown（或换掉 Radix 手势）后再跑 reconnect。
+
+## 2026-08-30 — 整理记录与导航
+
+完成：
+
+- 现在时产品发行描述与已发行 builtin + required Codex 对齐（FEATURE_MATRIX、CUSTOM_API_PLAN 档案化）。
+- README / docs/INDEX.md 入口改为 `docs/tasks.md` 与 `./scripts/start-harness-workbench.sh`。MASTER_PLAN 与 NEXT_GOALS G0–G2 标为档案。
+- 剩余工作为 T8–T11；T2 不再写成 Codex-only 发行；T7 / K1 不作为下一步。
+
+验证：
+
+```bash
+node scripts/check-docs-current-claims.mjs
+# docs current-claims check: OK
+```
+
+未改 provider 发行代码。未开 relay。未向 `getpaseo/paseo` 推送。未删 PROGRESS / verification / protocol。

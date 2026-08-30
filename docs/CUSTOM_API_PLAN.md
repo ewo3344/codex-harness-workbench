@@ -1,6 +1,8 @@
 # 自定义 API 与手机体验改善计划
 
-最后更新：2026-08-24
+**档案**：2026-08-24 专项计划快照，不是当前必读。阶段 1「当时架构强制 Codex-only」已由产品 builtin 发行 + required Codex 取代。当前剩余工作见 [`docs/tasks.md`](tasks.md)。
+
+最后更新：2026-08-24（档案）
 
 ## 背景
 
@@ -12,7 +14,7 @@
 
 ### 阶段 1：放宽 Provider 限制（1-2 天）
 
-当前架构强制 Codex-only，需要调整为 "Codex 优先 + 可选自定义 provider"。
+当时架构强制 Codex-only；目标是 "Codex 优先 + 可选自定义 provider"。产品侧此后已发行 claude / copilot / opencode / pi，Codex 仍 required。
 
 #### 修改点
 

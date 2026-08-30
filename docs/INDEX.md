@@ -2,27 +2,38 @@
 
 **所有文档的索引和导航**
 
----
-
-## 📚 核心文档（必读）
-
-| 文档 | 描述 | 页数 | 更新日期 |
-|------|------|------|----------|
-| [MASTER_PLAN.md](MASTER_PLAN.md) | ⭐ **完整实施计划（3 周路线图）** | 1000+ | 2026-08-24 |
-| [VERSION_CONTROL.md](VERSION_CONTROL.md) | 🔖 **版本控制与发布规范** | 1000+ | 2026-08-29 |
-| [QUICKSTART.md](QUICKSTART.md) | 🚀 快速开始指南 | 300+ | 2026-08-24 |
-| [CUSTOM_PROVIDERS.md](CUSTOM_PROVIDERS.md) | 🔧 自定义 API 配置指南 | 150+ | 2026-08-24 |
+当前入口是剩余工作与如何运行，不是 08-24 的三周 `MASTER_PLAN` 或 G0–G2 交接。
 
 ---
 
-## 📖 规划文档
+## 当前入口（必读）
+
+| 文档 | 描述 |
+|------|------|
+| [tasks.md](tasks.md) | 剩余工作（T8–T11） |
+| [QUICKSTART.md](QUICKSTART.md) | 如何运行：`./scripts/start-harness-workbench.sh` |
+| [../STATUS.md](../STATUS.md) | 项目状态总览 |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | 系统架构与不可破坏约束 |
+
+---
+
+## 📚 配置与参考
+
+| 文档 | 描述 | 更新日期 |
+|------|------|----------|
+| [VERSION_CONTROL.md](VERSION_CONTROL.md) | 版本控制与发布规范 | 2026-08-29 |
+| [CUSTOM_PROVIDERS.md](CUSTOM_PROVIDERS.md) | 自定义 API 配置指南 | 2026-08-24 |
+
+---
+
+## 📖 档案（不是当前必读）
 
 | 文档 | 用途 |
 |------|------|
-| [MASTER_PLAN.md](MASTER_PLAN.md) | 完整的 5 阶段实施计划 |
-| [CUSTOM_API_PLAN.md](CUSTOM_API_PLAN.md) | 自定义 API 与移动端改善专项计划 |
+| [MASTER_PLAN.md](MASTER_PLAN.md) | 2026-08-24 三周实施计划快照 |
+| [NEXT_GOALS.md](NEXT_GOALS.md) | G0–G2 交接（已完成，勿当待办） |
+| [CUSTOM_API_PLAN.md](CUSTOM_API_PLAN.md) | 自定义 API 专项计划快照 |
 | [../PLAN.md](../PLAN.md) | 原始重建计划 |
-| [VERSION_CONTROL.md](VERSION_CONTROL.md) | 版本控制与发布计划 |
 
 ---
 
@@ -72,7 +83,7 @@
 **目标**：理解架构并参与开发
 
 1. [ARCHITECTURE.md](ARCHITECTURE.md) - 了解系统架构
-2. [MASTER_PLAN.md](MASTER_PLAN.md) - 查看开发计划
+2. [tasks.md](tasks.md) - 当前剩余工作
 3. [VERSION_CONTROL.md](VERSION_CONTROL.md) - 学习版本管理规范
 4. [PROGRESS.md](PROGRESS.md) - 查看开发历史
 5. [FEATURE_MATRIX.md](FEATURE_MATRIX.md) - 了解功能完成度
@@ -81,10 +92,10 @@
 
 **目标**：掌握项目进度和计划
 
-1. [MASTER_PLAN.md](MASTER_PLAN.md) - 完整实施计划
+1. [tasks.md](tasks.md) - 剩余工作
 2. [../STATUS.md](../STATUS.md) - 项目状态总览
 3. [VERSION_CONTROL.md](VERSION_CONTROL.md) - 版本发布计划
-4. [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) - 阶段总结
+4. [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) - 阶段总结（档案）
 
 ### 🔧 运维人员
 
@@ -106,7 +117,7 @@
 
 ### 移动端
 
-- [MASTER_PLAN.md](MASTER_PLAN.md#阶段-2移动端核心验证) - 阶段 2 计划
+- [tasks.md](tasks.md) - T8 relay 未证明项；T7 Android 真机表单已通过
 - [FEATURE_MATRIX.md](FEATURE_MATRIX.md) - 移动端功能矩阵
 - [RELAY_VALIDATION.md](RELAY_VALIDATION.md) - 本地 E2EE relay 验证
 
@@ -142,7 +153,7 @@
 |------|----------|
 | PROGRESS.md | 每次开发后 |
 | STATUS.md | 每周 |
-| MASTER_PLAN.md | 每个阶段完成后 |
+| MASTER_PLAN.md | 档案，不再当当前计划更新 |
 | VERSION_*.md | 每次版本发布 |
 | 其他 | 按需更新 |
 

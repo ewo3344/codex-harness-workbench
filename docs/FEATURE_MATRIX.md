@@ -33,9 +33,9 @@
 | Skills | `skills/list/config/write/extraRoots` | Rust 真实列出 cwd skills；Paseo 映射为 slash commands | 部分 | 启停、额外根、刷新和移动端调用 |
 | Codex plugins/apps/marketplace | `plugin/*`、`app/*`、`marketplace/*` | experimental capability 握手后，Rust 真实读取 plugin marketplaces 与 apps catalog；Paseo 本地 plugin 是另一套系统 | 缺口 | 新建 Codex 专用管理面；不得与 OMP/Paseo plugin 混淆 |
 | 后台终端 | `thread/backgroundTerminals/*`、`command/exec/*` | Paseo 有独立 terminal；本地 E2EE relay 已回归创建、订阅、二进制输入/输出、resize、terminate | 部分 | 列表、attach、客户端 UI、设备和重连验收 |
-| 多项目、多工作区、多 agent | Codex threads + Paseo project/workspace/agent manager | Paseo 已实现；产品 provider snapshot 已强制 Codex-only，只验证单 agent | 已有待验 | 多仓库、多 worktree、并行 Codex 任务与资源限制 |
+| 多项目、多工作区、多 agent | Codex threads + Paseo project/workspace/agent manager | Paseo 已实现；产品 snapshot 发行 claude / copilot / opencode / pi / Codex（Codex required）；多 agent 路径仍待验 | 已有待验 | 多仓库、多 worktree、并行 Codex 任务与资源限制 |
 | commit/PR/merge/preview | 主要由 Paseo Git/forge/service proxy 提供 | Paseo 产品已实现 | 已有待验 | 本地 repo 真实分支→diff→commit→PR（可在测试 forge mock） |
-| 本地 Web 与局域网直连 | Paseo WebSocket | pinned Paseo fork 在 127.0.0.1:6877 启动；持久化 `codex.enabled=false` 时仍只发布/启用 Codex，并通过 CLI 完成真实 turn | 已验证 | LAN TLS/鉴权仍需安全验收 |
+| 本地 Web 与局域网直连 | Paseo WebSocket | pinned Paseo fork 在 127.0.0.1:6877 启动；产品 builtin 可发行；持久化 `codex.enabled=false` 时 Codex 仍启用，并通过 CLI 完成真实 turn | 已验证 | LAN TLS/鉴权仍需安全验收 |
 | 手机配对与 E2EE relay | Paseo relay/pairing | 本地 Wrangler crypto/offer/CLI 基线、E2EE `DaemonClient` 重连与 terminal stream 契约已验证；实体 Android 已验证控制面 relay 会话 | 已有待验 | Android/iOS 配对、断网重连、relay 零知识检查 |
 | 桌面包装与多窗口 | Paseo Electron | 上游已有 | 已有待验 | Linux 实包启动、多窗口、daemon 生命周期 |
 | Voice/realtime | Codex realtime APIs；Paseo 自有 STT/TTS | 开发配置为避免大模型下载而关闭 | 缺口 | 决定采用 Codex realtime 还是 Paseo voice，再做端到端 |

@@ -1,7 +1,7 @@
 # Codex Harness Workbench - 项目状态总览
 
-**最后更新**：2026-08-28  
-**当前阶段**：阶段 1 完成 ✅；阶段 2 的 Web relay terminal 路径已验收，移动设备验收继续进行 🚧；阶段 3 配置 UI 与热更新实现完成，真实浏览器 provider 生命周期已验收，移动真机生命周期待验 🚧
+**最后更新**：2026-08-30  
+**当前阶段**：阶段 1 完成 ✅；阶段 2 Web relay terminal 已验收，Android 部分 relay 恢复路径已观察，其余 relay/iOS 仍待验 🚧；阶段 3 配置 UI 完成，浏览器 provider 生命周期已验收，Android 真机 provider 表单 cancel（T7）已通过，iOS 仍待验 🚧。剩余工作见 `docs/tasks.md`（T8–T11）。
 
 ---
 
@@ -18,7 +18,7 @@
 
 阶段 1: 自定义 API 基础      ████████████  100% ✅
 阶段 2: 移动端核心验证        ██░░░░░░░░░░   Web relay terminal ✅ / Android 部分恢复路径 ✅ / 其余验收待办
-阶段 3: 配置管理 UI          ████████████  实现完成、浏览器 provider 生命周期已验收 ✅ / 移动真机验收待办
+阶段 3: 配置管理 UI          ████████████  实现完成、浏览器生命周期 ✅ / Android T7 真机表单 ✅ / iOS 待验
 阶段 4: 高级功能增强          ███░░░░░░░░░  热更新基线 ✅ / reload 失败原子回滚 ✅ / 并发、健康检查待办
 阶段 5: 生产就绪              ░░░░░░░░░░░░    0% 🚀
 ```
@@ -106,7 +106,7 @@
   - [ ] 边界情况测试
 
 - [ ] **移动端 UI/UX**（Day 3）
-  - [ ] Provider 管理（共享 UI 已实现，Android/iOS 真机待验）
+  - [x] Provider 管理（共享 UI；Android T7 真机 cancel 通过；iOS 待验；Maestro 操作系独立未修）
   - [ ] 审批交互测试
   - [ ] 后台终端查看（Web relay terminal 已验收；移动端 terminal UI 仍待验）
   - [ ] 响应式布局验证
@@ -126,7 +126,8 @@
 - [x] 保存后请求 daemon 配置 reload 并刷新 provider snapshot
 - [x] Codex required provider 在 UI 和 daemon 边界均不可停用或删除
 - [x] 真实浏览器完成 provider 生命周期 E2E（OpenAI 完整 CRUD；Anthropic key/token 与 ACP 参数路径）
-- [ ] Android/iOS 真机完成共享 Provider UI 验收
+- [x] Android 真机共享 Provider 表单 cancel 验收（T7）
+- [ ] iOS 真机完成共享 Provider UI 验收
 - [ ] 浏览器错误反馈、保存成功率和操作时间验收
 
 ### 阶段 4：高级功能（2026-09-02 ~ 09-06）

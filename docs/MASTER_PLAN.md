@@ -1,10 +1,12 @@
 # Codex Harness Workbench - 完整实施计划
 
+**档案**：2026-08-24 起的约 3 周实施计划快照，不是当前必读。当前剩余工作见 [`docs/tasks.md`](tasks.md)，运行见 [`QUICKSTART.md`](QUICKSTART.md) / `./scripts/start-harness-workbench.sh`。
+
 **项目名称**：Codex Harness Workbench 自定义 API 与移动端体验完善  
 **版本**：v1.0  
 **创建日期**：2026-08-24  
-**最后更新**：2026-08-27  
-**预计完成**：2026-09-10（~3 周）
+**最后更新**：2026-08-27（档案）  
+**预计完成**：2026-09-10（~3 周，历史目标）
 
 ---
 
