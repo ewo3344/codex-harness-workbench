@@ -125,6 +125,14 @@ npm run lint -- <改动到的文件>
 本项不涉及 Codex required 约束、审批语义或 relay。不要顺手改动 provider 逻辑本身。
 仓库已公开，提交前按 R3 第三节做密钥扫描。
 
+## K2 — J2 续跑（2026-08-30 真机通过）
+
+k2-run4 `PASEO_MAESTRO_MANUAL=1` + adb：`provider-after.json` 仅 `codex`，
+harness `SCRIPT_EXIT=0`。证据 `$HOME/.maestro-2.8.0/k2-run4/`。
+Maestro 操作系（阻碍 A）未修。`--check` / 模拟器 / Waydroid 不算此通过。
+
+以下为通过前的执行说明，保留备查。
+
 ## K2 — J2 续跑（诊断已修正：只差安装弹窗被点一次）
 
 ### 修正前一轮的诊断
@@ -212,7 +220,7 @@ hosted TLS relay 已完成——这些在 `docs/RELAY_VALIDATION.md` 已列为�
 
 ```
 K1（配置并发覆盖，无阻塞，立即做）
-K2（J2 续跑）—— 等用户在手机上开「USB 安装」
+K2（J2 续跑）—— 2026-08-30 真机通过；阻碍 A 仍独立
 K3（Desktop reconnect / reload 日志审计 / 会话连续性）
 K4（额度 08-31 08:16 后）
 ```

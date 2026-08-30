@@ -824,3 +824,29 @@ adb -s 10AE6J03LC001JL shell settings get global animator_duration_scale
 ```
 
 边界：未向 `getpaseo/paseo` 推送。未改 `config/paseo.dev.json` 打开 relay。未把 `expectedRevision` 改为 required。未声称 J2 通过。未创建 `continue`。未做 uiautomator/Appium 重写，也未降级模拟器。
+
+## 2026-08-30 — K2 / T7 真机：cancel 后仅 codex（k2-run4）
+
+完成：
+
+- 阻碍 B 前景 5 分钟 poll：`pm enable` 后 COLD 启动 DevLauncher，09:09:29–09:16:51 共 60 次采样均为 `enabled=1`，未翻到 `enabled=3`。日志 `/tmp/grok-goal-60157af01582/implementer/blocker-b-poll.log`。空闲/后台仍可能翻转；未连打 `pm enable`。
+- 单次 `PASEO_MAESTRO_MANUAL=1`：artifacts `$HOME/.maestro-2.8.0/k2-run4`，隔离 `PASEO_HOME`，daemon `127.0.0.1:37535`，`--no-relay`。reverse 仅 `tcp:37535` + `tcp:8081`。
+- DevLauncher：点 `http://localhost:8081` 文本（clickable=false）或未选中的 Connect 会 `Invalid URL host: ""`。`expo-dev-launcher://` 仍不加载 bundle。`exp+voice-mobile://expo-development-client/?url=http://127.0.0.1:8081` 触发 Metro `Android Bundled 20101ms`，进入 `MainActivity` welcome。
+- 直连：Host 与 port 必须分栏。Host 填 `127.0.0.1:37535` 且 port 留 `6767` → `Invalid URL: tcp://[127.0.0.1:37535]:6767`。键盘会改 bounds，port 要用当前 dump。数字键盘上 `input text` 不可靠，用 KEYCODE_0–9。
+- Settings → Providers → `custom-provider-add` 打开 `custom-provider-edit-sheet` / `custom-provider-base-url`，点 `custom-provider-cancel`。dump：`$HOME/.maestro-2.8.0/k2-run4/custom-provider-form.xml` 与 `after-cancel2.xml`（仅 Codex）。
+- 之后才写 `continue`。harness `SCRIPT_EXIT=0`。
+- `$HOME/.maestro-2.8.0/k2-run4/provider-after.json` 仅一项 `provider: "codex"`。断言：`PASS: cancelling the editor left the isolated daemon with Codex only.`
+- T7 标完了。阻碍 A（Maestro tap 后 viewHierarchy 挂）仍独立未修。`--check` / 模拟器 / Waydroid 不算此通过。
+- `scripts/drive-k2-manual.sh`：DevLauncher 改 development-client deep link；Host/port 分栏；数字用 keyevent。脚本仍不创建 `continue`。
+
+验证：
+
+```bash
+cat "$HOME/.maestro-2.8.0/k2-run4/provider-after.json"
+# 仅 codex
+$HOME/.maestro-2.8.0/bin/maestro --version   # 2.8.0
+$HOME/.maestro/bin/maestro --version         # 2.9.0，未被覆盖
+adb -s 10AE6J03LC001JL reverse --list        # 当时 tcp:37535 与 tcp:8081
+```
+
+RELAY_VALIDATION 未证明项未改。未向 `getpaseo/paseo` 推送。未改 `config/paseo.dev.json` 打开 relay。未把 `expectedRevision` 改为 required。未 `am force-stop` / `pm clear`。未覆盖 `~/.maestro`。未声称 Maestro 路径通过。
